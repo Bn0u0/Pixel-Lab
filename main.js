@@ -78,7 +78,12 @@ function update(dt) {
 }
 
 function draw() {
-    if (renderer && player) {
-        renderer.render(player, PALETTE_SLIME, globalTime);
+    if (renderer) {
+        if (physics) {
+            renderer.renderPhysics(physics, globalTime);
+        }
+        if (player) {
+            // renderer.render(player, PALETTE_SLIME, globalTime); // Temporarily hide player to focus on physics grid
+        }
     }
 }

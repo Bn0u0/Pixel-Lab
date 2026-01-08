@@ -131,6 +131,78 @@ export class PixelRenderer {
         this.ctx.restore();
     }
 
+    // ... (previous methods)
+
+    // --- Day 1: Physics Rendering ---
+    // 物理渲染
+    renderPhysics(physics, time) {
+        if (!this.bufferCanvas) {
+            this.bufferCanvas = document.createElement('canvas');
+            this.bufferCanvas.width = CONFIG.GRID_WIDTH;
+            this.bufferCanvas.height = CONFIG.GRID_HEIGHT;
+            this.bufferCtx = this.bufferCanvas.getContext('2d');
+        }
+
+        // 1. Get ImageData (Low-level pixel manipulation for speed)
+        // 使用 ImageData 直接操作像素以提升效能
+        const imageData = this.bufferCtx.getImageData(0, 0, physics.width, physics.height);
+        const data = imageData.data;
+
+        for (let i = 0; i < physics.length; i++) {
+            const materialId = physics.grid[i];
+
+            // Skip AIR (0) - Transparent
+            if (materialId === 0) continue;
+
+            // Get Props
+            // 獲取材質屬性
+            const props = physics.constructor.getProperties(materialId); // Access static method
+
+            let color = props.color;
+
+            // Reverse Violence: Undefined Color -> Magic Pink
+            // 反向暴力驗收：未定義顏色 -> 洋紅色
+            if (color === undefined) {
+                color = 0xFF00FF; // Magenta
+            }
+
+            // Convert Hex (0xRRGGBB) to R, G, B
+            // 位元運算提取 RGB
+            const r = (color >> 16) & 0xFF;
+            const g = (color >> 8) & 0xFF;
+            const b = color & 0xFF;
+
+            const idx = i * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255; // Alpha
+        }
+
+        // 2. Put back to buffer
+        this.bufferCtx.putImageData(imageData, 0, 0);
+
+        // 3. Draw Buffer to Main Canvas (Scaled)
+        // 繪製到主畫布
+        this.ctx.imageSmoothingEnabled = false; // Ensure crisp edges (Task 109)
+        const scale = CONFIG.PIXEL_SCALE;
+
+        // Center the grid on screen
+        const drawX = (this.canvas.width - physics.width * scale) / 2;
+        const drawY = (this.canvas.height - physics.height * scale) / 2;
+
+        this.ctx.drawImage(
+            this.bufferCanvas,
+            0, 0, physics.width, physics.height,
+            drawX, drawY, physics.width * scale, physics.height * scale
+        );
+
+        // Draw debug border
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(drawX, drawY, physics.width * scale, physics.height * scale);
+    }
+
     _isTransparent(color) {
         if (Array.isArray(color)) {
             return color[3] === 0;

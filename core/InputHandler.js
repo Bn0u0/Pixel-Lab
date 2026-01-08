@@ -13,10 +13,20 @@ export class InputHandler {
             this.keys.delete(e.code);
         });
 
-        console.log('InputHandler Initialized');
+        // Mouse Position tracking for Twin Stick Aiming
+        this.mouseX = 0;
+        this.mouseY = 0;
+        window.addEventListener('mousemove', (e) => {
+            this.mouseX = e.clientX;
+            this.mouseY = e.clientY;
+        });
     }
 
     isKeyDown(code) {
         return this.keys.has(code);
+    }
+
+    getMousePos() {
+        return { x: this.mouseX, y: this.mouseY };
     }
 }

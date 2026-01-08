@@ -21,7 +21,6 @@ export class PixelRenderer {
         this.ctx.imageSmoothingEnabled = false;
         this.resize();
         window.addEventListener('resize', () => this.resize());
-        console.log('Renderer Initialized (Phase 3: Material Shaders Active)');
     }
 
     resize() {

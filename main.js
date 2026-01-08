@@ -38,8 +38,9 @@ window.onload = () => {
 
         // Initialize Player
         // 初始化玩家
-        const startX = (window.innerWidth / CONFIG.PIXEL_SCALE / 2) - 16;
-        const startY = (window.innerHeight / CONFIG.PIXEL_SCALE / 2) - 24;
+        // Spawn in center of logical grid (e.g., 16, 24)
+        const startX = CONFIG.GRID_WIDTH / 2;
+        const startY = CONFIG.GRID_HEIGHT / 2;
         player = new Player(startX, startY, input);
 
         // Equip Starting Gear (Base + Pants for decency)
@@ -69,7 +70,7 @@ function update(dt) {
     globalTime += dt;
 
     if (player) {
-        player.update(dt);
+        player.update(dt, physics);
     }
 
     if (physics) {

@@ -20,8 +20,8 @@ module.exports = {
         "no-console": ["warn", { "allow": ["warn", "error"] }], // Minimize console noise
         "no-restricted-imports": ["error", {
             "patterns": [{
-                "group": ["*"],
-                "message": "External libraries are strictly prohibited by the Constitution (Zero Dependency). Use Vanilla JS."
+                "group": ["!.*", "!..*"], // Allow local imports (starts with . or ..)
+                "message": "External libraries are strictly prohibited. Use Vanilla JS."
             }]
         }],
 

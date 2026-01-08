@@ -22,6 +22,7 @@ import { SPRITE_KLOA_BOOTS } from './library/shoes/kloa_boots.js';
  * 資產註冊表
  */
 
+// eslint-disable-next-line no-unused-vars
 export const ASSET_REGISTRY = [
     // BODIES
     { id: 'human_base', name: 'Human Base', slot: 'body', sprite: SPRITE_HUMAN_BASE },

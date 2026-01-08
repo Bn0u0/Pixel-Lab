@@ -2,6 +2,7 @@ import { CONFIG } from './data/config.js';
 import { GameLoop } from './core/GameLoop.js';
 import { PixelRenderer } from './render/PixelRenderer.js';
 import { InputHandler } from './core/InputHandler.js';
+import { PhysicsWorld } from './core/PhysicsWorld.js';
 
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 // import { SPRITE_HUMAN_BASE } from './data/library/bodies/human_base.js';
@@ -18,6 +19,7 @@ let renderer;
 let input;
 let player;
 let wardrobe;
+let physics;
 let globalTime = 0;
 
 window.onload = () => {
@@ -25,6 +27,10 @@ window.onload = () => {
         // Initialize Renderer
         // 初始化渲染器
         renderer = new PixelRenderer('game-world');
+
+        // Initialize Physics (Day 1 Core)
+        // 初始化物理引擎
+        physics = new PhysicsWorld();
 
         // Initialize Input
         // 初始化輸入
@@ -64,6 +70,10 @@ function update(dt) {
 
     if (player) {
         player.update(dt);
+    }
+
+    if (physics) {
+        physics.update(dt);
     }
 }
 

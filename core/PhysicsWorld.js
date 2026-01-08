@@ -55,8 +55,55 @@ export class PhysicsWorld {
         return MATERIAL_PROPS[materialId] || { type: 'unknown', gravity: false };
     }
 
-    // Main step - to be implemented
+    // Main step - Cellular Automata Logic
     update(dt) {
-        // Placeholder for cellular automata logic
+        // Simple bottom-up iteration to prevent falling particles from moving multiple times per frame
+        // In a real optimized system, we might use double buffering or dirty rects.
+        // For Day 1, we use naive scanning from bottom to top.
+
+        for (let y = this.height - 1; y >= 0; y--) {
+            for (let x = 0; x < this.width; x++) {
+                const i = y * this.width + x;
+                const cell = this.grid[i];
+
+                if (cell === MATERIALS.SAND) {
+                    this.updateSand(x, y, i);
+                }
+            }
+        }
+    }
+
+    updateSand(x, y, i) {
+        if (y >= this.height - 1) return; // Bottom boundary
+
+        const below = i + this.width;
+
+        // 1. Try passing down (Gravity)
+        if (this.grid[below] === MATERIALS.AIR || this.grid[below] === MATERIALS.WATER) {
+            // Swap
+            this.grid[i] = this.grid[below];
+            this.grid[below] = MATERIALS.SAND;
+            return;
+        }
+
+        // 2. Try falling diagonal left
+        if (x > 0) {
+            const belowLeft = below - 1;
+            if (this.grid[belowLeft] === MATERIALS.AIR || this.grid[belowLeft] === MATERIALS.WATER) {
+                this.grid[i] = this.grid[belowLeft];
+                this.grid[belowLeft] = MATERIALS.SAND;
+                return;
+            }
+        }
+
+        // 3. Try falling diagonal right
+        if (x < this.width - 1) {
+            const belowRight = below + 1;
+            if (this.grid[belowRight] === MATERIALS.AIR || this.grid[belowRight] === MATERIALS.WATER) {
+                this.grid[i] = this.grid[belowRight];
+                this.grid[belowRight] = MATERIALS.SAND;
+                return;
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-import { CONFIG } from '../data/config.js';
+import { CONFIG } from '../data/config_v2.js';
 
 export const MATERIALS = {
     AIR: 0,
@@ -32,26 +32,30 @@ export class PhysicsWorld {
         // The main grid: 1 byte per pixel, storing Material ID
         this.grid = new Uint8Array(this.length);
 
-        // Optimization: Chunk Bitmask
-        // 32x48 grid, 16x16 chunks => 2x3 = 6 chunks.
-        // We can store active state in a single integer (bitmask).
+        // Optimization: Chunk Management with Set (Unlimited World Size)
+        // 32x48 grid, 16x16 chunks
         this.CHUNK_SIZE = 16;
         this.cols = Math.ceil(this.width / this.CHUNK_SIZE);
         this.rows = Math.ceil(this.height / this.CHUNK_SIZE);
 
-        // Current frame active mask and Next frame active mask
-        this.chunkMask = 0xFFFFFFFF; // Start with all active to settle initial state
-        this.nextChunkMask = 0;
+        // Active Chunks Set (Stores Chunk Index: cy * cols + cx)
+        this.activeChunks = new Set();
+
+        // Initial state: Activate all chunks
+        this.reset();
     }
 
     reset() {
         this.grid.fill(MATERIALS.AIR);
-        this.chunkMask = 0xFFFFFFFF; // Wake everything
+        this.activeChunks.clear();
+        for (let i = 0; i < this.cols * this.rows; i++) {
+            this.activeChunks.add(i);
+        }
     }
 
     // Get material ID at (x, y)
     get(x, y) {
-        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return MATERIALS.STONE; // Border is stone
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return MATERIALS.AIR; // Border is Void (Air), not Stone
         return this.grid[y * this.width + x];
     }
 
@@ -68,65 +72,72 @@ export class PhysicsWorld {
         const cy = (y / this.CHUNK_SIZE) | 0;
         this.activateChunk(cx, cy);
 
-        // Wake neighbors if on edge (simplified: just wake 3x3 area around it for robustness)
-        // For strict optimization, we'd check strict boundaries.
-        // For this MVP, waking the specific chunk is primary.
-        // If we place sand at bottom of chunk, it moves to next chunk next frame.
-        // The update logic will handle propagating wakefulness.
-        // But for 'set' (user input), we should ensure the target is awake.
+        // Wake neighbors to ensure seamless flow across boundaries
+        this.activateChunk(cx - 1, cy);
+        this.activateChunk(cx + 1, cy);
+        this.activateChunk(cx, cy - 1);
+        this.activateChunk(cx, cy + 1);
     }
 
     activateChunk(cx, cy) {
         if (cx < 0 || cx >= this.cols || cy < 0 || cy >= this.rows) return;
-        const bit = 1 << (cy * this.cols + cx);
-        this.chunkMask |= bit;
-        this.nextChunkMask |= bit; // Keep it awake for next frame too
+        const id = cy * this.cols + cx;
+        this.activeChunks.add(id);
     }
 
     isActive(cx, cy) {
         if (cx < 0 || cx >= this.cols || cy < 0 || cy >= this.rows) return false;
-        return (this.chunkMask & (1 << (cy * this.cols + cx))) !== 0;
+        return this.activeChunks.has(cy * this.cols + cx);
     }
 
     static getProperties(materialId) {
         return MATERIAL_PROPS[materialId] || { type: 'unknown', gravity: false };
     }
 
-    // Main step - Cellular Automata Logic with Bitmasking
+    // Main step - Cellular Automata Logic
     update(dt) {
-        this.nextChunkMask = 0; // Reset next frame mask
+        // Create Next Frame Active Set
+        // We iterate currently active chunks. If anything moves, we add to next active set.
+        // However, 'activeChunks' is modified during updateSand? 
+        // Better: activeChunks accumulates. We verify if a chunk actually had activity?
+        // Simplified Logic: 
+        // 1. Snapshot current active chunks.
+        // 2. Clear current active chunks (or use a 'next' set).
+        // 3. Process snapshot. If activity happens, add to 'next'.
+
+        const chunksToProcess = new Set(this.activeChunks);
+        this.activeChunks.clear();
 
         // Iterate Chunks
-        for (let cy = 0; cy < this.rows; cy++) {
-            for (let cx = 0; cx < this.cols; cx++) {
-                // Skip if chunk is sleeping
-                if (!this.isActive(cx, cy)) continue;
-
-                // Define Chunk Bounds
-                const startX = cx * this.CHUNK_SIZE;
-                const endX = Math.min(startX + this.CHUNK_SIZE, this.width);
-                const startY = cy * this.CHUNK_SIZE;
-                const endY = Math.min(startY + this.CHUNK_SIZE, this.height);
-
-                // Update pixels in this chunk
-                // Note: We still scan bottom-up, but within chunks or global?
-                // Global bottom-up scan is safest for Sand.
-                // If we iterate chunks, we must do bottom chunks first.
-                // Let's iterate chunks in reverse Y order to maintain bottom-up logic.
-            }
-        }
-
-        // REFORMATTED LOOP: Iterate pixels, but skip chunks
-        // To strictly maintain bottom-up, we iterate chunks bottom-up
+        // Note: For bottom-up logic, we should sort chunks? 
+        // Sand must be processed Bottom-Up globally or locally.
+        // If we process chunks in arbitrary order (Set iteration), we might break sand stacking logic at chunk borders.
+        // STABLE SOLUTION: Iterate *ALL CHUNKS* in correct order, but skip if not in Set.
 
         for (let cy = this.rows - 1; cy >= 0; cy--) {
-            for (let cx = 0; cx < this.cols; cx++) { // X order matters less
-                if (!this.isActive(cx, cy)) continue;
+            for (let cx = 0; cx < this.cols; cx++) {
+                const id = cy * this.cols + cx;
+                if (!chunksToProcess.has(id)) continue;
+
+                // Keeps chunk active for at least one frame if it was active
+                // Wait, if no sand moved, it should sleep.
+                // But we just cleared activeChunks. 
+                // We need to re-add ONLY if we find moving sand or if 'force awake' logic exists.
+                // Actually, standard CA optimization:
+                // If a cell changes, wake neighbors.
+                // So here, we default to sleeping unless updateSand says "I moved".
+                // But we must process the chunk to know if it moves?
+                // Yes. 
+
+                // Problem: If I don't add it to activeChunks, and nothing moves, it dies. Correct.
+                // But what if sand is falling IN from above? The above chunk wakes THIS chunk.
 
                 const startX = cx * this.CHUNK_SIZE;
                 const endX = Math.min(startX + this.CHUNK_SIZE, this.width);
                 const startY = cy * this.CHUNK_SIZE;
                 const endY = Math.min(startY + this.CHUNK_SIZE, this.height);
+
+                let chunkHasActivity = false;
 
                 // Scan this chunk bottom-up
                 for (let y = endY - 1; y >= startY; y--) {
@@ -137,47 +148,68 @@ export class PhysicsWorld {
                         if (cell === MATERIALS.SAND) {
                             const moved = this.updateSand(x, y, i);
                             if (moved) {
-                                // If moved, keep this chunk active
-                                this.activateChunk(cx, cy);
-                                // And the chunk we moved INTO (handled in updateSand or implicitly by bounds)
-                                // Actually updateSand moves to neighbors. We should ensure they wake up.
-                                // For simplicity, updateSand will return 'targetX, targetY' or we just 'wakeChunkAt(n)' inside.
+                                chunkHasActivity = true;
+                                // updateSand handles waking destination chunk (and neighbors if needed)
                             }
                         }
                     }
                 }
+
+                // If invalid/static sand exists, we might falsely sleep? 
+                // No, if sand didn't move, it's static.
+                // BUT: If sand TRIES to move but is blocked, it's static.
+                // Only if it MOVES do we wake.
+
+                // If this chunk had activity, it (and potentially neighbors) should be active next frame.
+                // Actually, if sand moved OUT, destination handles wake.
+                // If sand moved IN, source handles wake?
+                // Does this chunk need to stay awake? 
+                // Only if there is still "unsettled" sand? 
+                // If sand moved, it is unsettled.
+                if (chunkHasActivity) {
+                    this.activateChunk(cx, cy);
+                }
             }
         }
-
-        this.chunkMask = this.nextChunkMask;
     }
 
     updateSand(x, y, i) {
-        if (y >= this.height - 1) return false; // Bottom boundary
+        const ty = y + 1;
+
+        // 1. Bottom Boundary (Stop at bottom of world)
+        if (ty >= this.height) {
+            return false;
+        }
 
         const below = i + this.width;
         let target = -1;
         let tx = x;
-        let ty = y + 1;
 
-        // 1. Try passing down (Gravity)
+        // 2. Try passing down (Gravity)
         if (this.grid[below] === MATERIALS.AIR || this.grid[below] === MATERIALS.WATER) {
             target = below;
         }
-        // 2. Try falling diagonal left
-        else if (x > 0) {
-            const belowLeft = below - 1;
-            if (this.grid[belowLeft] === MATERIALS.AIR || this.grid[belowLeft] === MATERIALS.WATER) {
-                target = belowLeft;
-                tx = x - 1;
+        // 3. Try falling diagonal left
+        else {
+            // Check Left Boundary (Must exist)
+            if (x > 0) {
+                const belowLeft = below - 1;
+                if (this.grid[belowLeft] === MATERIALS.AIR || this.grid[belowLeft] === MATERIALS.WATER) {
+                    target = belowLeft;
+                    tx = x - 1;
+                }
             }
         }
-        // 3. Try falling diagonal right
-        if (target === -1 && x < this.width - 1) { // Check right only if not already moved
-            const belowRight = below + 1;
-            if (this.grid[belowRight] === MATERIALS.AIR || this.grid[belowRight] === MATERIALS.WATER) {
-                target = belowRight;
-                tx = x + 1;
+
+        // 4. Try falling diagonal right
+        if (target === -1) {
+            // Check Right Boundary (Must exist)
+            if (x < this.width - 1) {
+                const belowRight = below + 1;
+                if (this.grid[belowRight] === MATERIALS.AIR || this.grid[belowRight] === MATERIALS.WATER) {
+                    target = belowRight;
+                    tx = x + 1;
+                }
             }
         }
 
@@ -187,10 +219,7 @@ export class PhysicsWorld {
             this.grid[target] = MATERIALS.SAND;
 
             // Wake up destination info
-            // Since we moved, we must ensure the destination chunk is active next frame
-            // AND the source chunk (since we left a hole that might be filled)
             this.wakeChunkAt(tx, ty); // Wake destination
-            // Source is kept awake by the caller using return value
             return true;
         }
 

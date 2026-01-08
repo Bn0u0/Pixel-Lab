@@ -1,4 +1,4 @@
-import { CONFIG } from '../data/config.js';
+import { CONFIG } from '../data/config_v2.js';
 import { SpriteCompositor } from './SpriteCompositor.js';
 
 export class PixelRenderer {
@@ -27,7 +27,57 @@ export class PixelRenderer {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         this.ctx.imageSmoothingEnabled = false;
-        this.clear();
+
+        // Removed fixed offset. We will calculate dynamic Camera Offset in render()
+        this.cameraX = 0;
+        this.cameraY = 0;
+
+        // this.clear(); // Main loop handles clear
+    }
+
+    updateCamera(entity) {
+        if (!entity) return;
+        const scale = CONFIG.PIXEL_SCALE;
+
+        // Goal: Keep entity in center of screen
+        const screenCX = this.canvas.width / 2;
+        const screenCY = this.canvas.height / 2;
+
+        // Target Camera Position (Entity World Pos * Scale) - Screen Center
+        // We want Camera * Scale to be the offset.
+        // Actually simplest is: Camera is top-left of Viewport in scaled pixels.
+        // Player is at PlayerX, PlayerY.
+        // We want (PlayerX * Scale - CameraX) = ScreenWidth/2
+        // So CameraX = PlayerX * Scale - ScreenWidth/2
+
+        const targetCamX = (entity.x * scale) - screenCX;
+        const targetCamY = (entity.y * scale) - screenCY;
+
+        // Smooth Camera (Lerp)
+        const lerp = 0.1;
+        this.cameraX += (targetCamX - this.cameraX) * lerp;
+        this.cameraY += (targetCamY - this.cameraY) * lerp;
+
+        // Clamp
+        const maxCamX = (CONFIG.GRID_WIDTH * scale) - this.canvas.width;
+        const maxCamY = (CONFIG.GRID_HEIGHT * scale) - this.canvas.height;
+
+        if (maxCamX < 0) { // Center if world smaller than screen
+            this.cameraX = maxCamX / 2; // (World - Screen) / 2 is negative center.. wait.
+            // If World (800) < Screen (1000). Offset should be (1000-800)/2 = 100 positive?
+            // If we translate by -Camera.
+            // Translate(100) -> Camera = -100.
+            // (WorldWidth - ScreenWidth) / 2 = (800 - 1000)/2 = -100. Correct.
+            this.cameraX = (CONFIG.GRID_WIDTH * scale - this.canvas.width) / 2;
+        } else {
+            this.cameraX = Math.max(0, Math.min(this.cameraX, maxCamX));
+        }
+
+        if (maxCamY < 0) {
+            this.cameraY = (CONFIG.GRID_HEIGHT * scale - this.canvas.height) / 2;
+        } else {
+            this.cameraY = Math.max(0, Math.min(this.cameraY, maxCamY));
+        }
     }
 
     clear() {
@@ -38,52 +88,57 @@ export class PixelRenderer {
     /**
      * Main Render Method
      * 主要渲染方法
-     * @param {Object} entity - The entity to render (must have 'equipment' and 'pos')
+     * @param {Object} entity - The entity to focus camera on (Player)
      * @param {Object} palette - The palette to use
      * @param {number} time - Global time for shaders
      */
     render(entity, palette, time) {
-        this.clear();
-
         this.ctx.save();
+
         const scale = CONFIG.PIXEL_SCALE;
+
+        // Apply Camera Transform (Integer snap to avoid blurry pixels)
+        // We translate everything by -camera
+        this.ctx.translate(-Math.floor(this.cameraX), -Math.floor(this.cameraY));
         this.ctx.scale(scale, scale);
 
         // 1. Compose Sprite
         const composedSprite = this.compositor.compose(entity.equipment);
 
-        // 2. Clear & Draw to Offscreen Buffer (32x48)
-        // 清除並繪製到離屏緩衝區
-        if (!this.bufferCanvas) {
-            this.bufferCanvas = document.createElement('canvas');
-            this.bufferCanvas.width = CONFIG.GRID_WIDTH;
-            this.bufferCanvas.height = CONFIG.GRID_HEIGHT;
-            this.bufferCtx = this.bufferCanvas.getContext('2d');
+        // 2. Clear & Draw to Offscreen Buffer (Sprite Buffer)
+        // 使用獨立的精靈緩衝區 (Sprite Buffer)
+        if (!this.spriteBuffer || this.spriteBuffer.width !== CONFIG.GRID_WIDTH) {
+            this.spriteBuffer = document.createElement('canvas');
+            this.spriteBuffer.width = CONFIG.GRID_WIDTH;
+            this.spriteBuffer.height = CONFIG.GRID_HEIGHT;
+            this.spriteCtx = this.spriteBuffer.getContext('2d');
         }
-        this.bufferCtx.clearRect(0, 0, CONFIG.GRID_WIDTH, CONFIG.GRID_HEIGHT);
+        this.spriteCtx.clearRect(0, 0, CONFIG.GRID_WIDTH, CONFIG.GRID_HEIGHT);
 
         // Draw Pixels to Buffer
-        for (let y = 0; y < CONFIG.GRID_HEIGHT; y++) {
+        // Optimization: Only draw sprite pixels? 
+        // Wait, standard sprite is 32x48. 
+        // The buffer loop below iterates GRID_WIDTH. 
+        // If GRID is 256, but sprite is 32, we burn frames scanning empty.
+        // We should scan the SPRITE DIMENSIONS (32x48).
+        // The 'composedSprite' is 48 rows of strings.
+
+        for (let y = 0; y < composedSprite.length; y++) { // Use sprite height
             const row = composedSprite[y];
             if (!row) continue;
-            for (let x = 0; x < CONFIG.GRID_WIDTH; x++) {
+            for (let x = 0; x < row.length; x++) { // Use sprite width
                 const char = row[x];
                 if (char === ' ' || char === '.') continue;
 
                 let color = palette[char] || '#ff00ff';
 
-                // --- Material Shaders (Simplified for Buffer) ---
-                if (char === 'M') { // Metal Scanline
+                if (char === 'M') {
                     if ((x + y + time * 10) % 20 > 18) color = '#ffffff';
-                }
-                if (char === 'J') { // Jelly Wobble (Internal color logic only)
-                    // We can't do vertex wobble here easily without distorting the pixel grid.
-                    // But we CAN do outline highlights.
                 }
 
                 if (color && !this._isTransparent(color)) {
-                    this.bufferCtx.fillStyle = this._rgbaToCss(color);
-                    this.bufferCtx.fillRect(x, y, 1, 1);
+                    this.spriteCtx.fillStyle = this._rgbaToCss(color);
+                    this.spriteCtx.fillRect(x, y, 1, 1);
                 }
             }
         }
@@ -92,11 +147,12 @@ export class PixelRenderer {
         // 套用變形 (擠壓/位置/跳躍)
 
         // Calculate Position
-        const bounceHeight = entity.z || 0; // Use Z from player for height
+        // Visual Anchor Correction: Player.y is Feet. Canvas draws from Top-Left.
+        // Sprite Height is approx 48.
         const bobOffset = Math.sin(time * 5) * 1;
 
-        const drawX = Math.floor(entity.x);
-        const drawY = Math.floor(entity.y + bobOffset + bounceHeight); // Add Z to Y offset
+        const drawX = Math.floor(entity.x - 16); // Center X (16) to Left X
+        const drawY = Math.floor(entity.y - 48 + bobOffset); // Feet Y to Top Y
 
         // Calculate Stretch based on Velocity (use entity.velocity.y which logic maps to vz)
         let stretch = 1.0;
@@ -107,7 +163,7 @@ export class PixelRenderer {
             // Normalize: 200 => 0.2 stretch factor
             stretch = 1.0 + Math.min(Math.abs(vy) * 0.001, 0.3); // Cap at 1.3x
 
-            // Invert stretch direction if falling? 
+            // Invert stretch direction if falling?
             // Usually falling is also stretched (speed lines).
             // Landing (sudden stop) is squash.
         } else {
@@ -125,7 +181,7 @@ export class PixelRenderer {
         this.ctx.scale(squash, stretch);
         this.ctx.translate(-pivotX, -pivotY);
 
-        this.ctx.drawImage(this.bufferCanvas, drawX, drawY);
+        this.ctx.drawImage(this.spriteBuffer, drawX, drawY);
 
         this.ctx.restore();
     }
@@ -135,16 +191,20 @@ export class PixelRenderer {
     // --- Day 1: Physics Rendering ---
     // 物理渲染
     renderPhysics(physics, time) {
-        if (!this.bufferCanvas) {
-            this.bufferCanvas = document.createElement('canvas');
-            this.bufferCanvas.width = CONFIG.GRID_WIDTH;
-            this.bufferCanvas.height = CONFIG.GRID_HEIGHT;
-            this.bufferCtx = this.bufferCanvas.getContext('2d');
+        // 使用獨立的物理緩衝區 (Physics Buffer)
+        if (!this.physicsBuffer) {
+            this.physicsBuffer = document.createElement('canvas');
+            this.physicsBuffer.width = CONFIG.GRID_WIDTH;
+            this.physicsBuffer.height = CONFIG.GRID_HEIGHT;
+            this.physicsCtx = this.physicsBuffer.getContext('2d', { willReadFrequently: true });
         }
+
+        // Clear Physics Buffer specifically!
+        this.physicsCtx.clearRect(0, 0, physics.width, physics.height);
 
         // 1. Get ImageData (Low-level pixel manipulation for speed)
         // 使用 ImageData 直接操作像素以提升效能
-        const imageData = this.bufferCtx.getImageData(0, 0, physics.width, physics.height);
+        const imageData = this.physicsCtx.getImageData(0, 0, physics.width, physics.height);
         const data = imageData.data;
 
         for (let i = 0; i < physics.length; i++) {
@@ -179,27 +239,43 @@ export class PixelRenderer {
         }
 
         // 2. Put back to buffer
-        this.bufferCtx.putImageData(imageData, 0, 0);
+        this.physicsCtx.putImageData(imageData, 0, 0);
 
         // 3. Draw Buffer to Main Canvas (Scaled)
         // 繪製到主畫布
         this.ctx.imageSmoothingEnabled = false; // Ensure crisp edges (Task 109)
         const scale = CONFIG.PIXEL_SCALE;
 
-        // Center the grid on screen
-        const drawX = (this.canvas.width - physics.width * scale) / 2;
-        const drawY = (this.canvas.height - physics.height * scale) / 2;
+        // Apply Camera (Inverse)
+        const camX = Math.floor(this.cameraX || 0); // Use stored camera pos from render()
+        const camY = Math.floor(this.cameraY || 0);
+
+        // We need to draw the physics world relative to the camera
+        // render() sets the context to (Scale, Scale) AND Translate(-Cam).
+        // But renderPhysics is called BEFORE render() in main.js
+
+        // Wait, main.js calls:
+        // 1. renderPhysics
+        // 2. render(player)
+
+        // If renderPhysics is dealing with Context directly, it needs to apply the same Camera.
+        // BUT, 'this.cameraX' is updated in 'render(entity)'.
+        // So Physics will lag one frame or use old camera? 
+        // Better: Update Camera in a separate 'updateCamera(entity)' method called before both?
+
+        // For now, let's just use the current cameraX/Y (which might be 0 on frame 1).
+
+        this.ctx.save();
+        this.ctx.translate(-camX, -camY);
+        this.ctx.scale(scale, scale);
 
         this.ctx.drawImage(
-            this.bufferCanvas,
+            this.physicsBuffer,
             0, 0, physics.width, physics.height,
-            drawX, drawY, physics.width * scale, physics.height * scale
+            0, 0, physics.width, physics.height // 1:1 in Scaled Space
         );
 
-        // Draw debug border
-        this.ctx.strokeStyle = '#333';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(drawX, drawY, physics.width * scale, physics.height * scale);
+        this.ctx.restore();
     }
 
     _isTransparent(color) {

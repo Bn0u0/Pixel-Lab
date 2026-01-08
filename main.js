@@ -1,8 +1,8 @@
-import { CONFIG } from './data/config.js';
+import { CONFIG } from './data/config_v2.js';
 import { GameLoop } from './core/GameLoop.js';
 import { PixelRenderer } from './render/PixelRenderer.js';
 import { InputHandler } from './core/InputHandler.js';
-import { PhysicsWorld } from './core/PhysicsWorld.js';
+import { PhysicsWorld, MATERIALS } from './core/PhysicsWorld.js';
 
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 // import { SPRITE_HUMAN_BASE } from './data/library/bodies/human_base.js';
@@ -13,6 +13,7 @@ import { WardrobeUI } from './ui/WardrobeUI.js';
 
 console.log('Project Initialized');
 console.log(`Pixel Scale: ${CONFIG.PIXEL_SCALE}`);
+console.log(`World Width: ${CONFIG.GRID_WIDTH} (Expected: 1024)`);
 
 let gameLoop;
 let renderer;
@@ -31,6 +32,22 @@ window.onload = () => {
         // Initialize Physics (Day 1 Core)
         // 初始化物理引擎
         physics = new PhysicsWorld();
+
+        // --- SANDBOX SETUP (Day 2 Demo) ---
+        // Create a floor
+        for (let x = 0; x < CONFIG.GRID_WIDTH; x++) {
+            physics.set(x, CONFIG.GRID_HEIGHT - 1, MATERIALS.STONE);
+            physics.set(x, CONFIG.GRID_HEIGHT - 2, MATERIALS.STONE);
+        }
+
+        // Walls removed by user request (Open World)
+
+        // Pour some sand
+        for (let i = 0; i < 2000; i++) { // More sand for larger world!
+            const rx = Math.floor(Math.random() * (CONFIG.GRID_WIDTH - 4)) + 2;
+            const ry = Math.floor(Math.random() * (CONFIG.GRID_HEIGHT / 2)); // Top half area
+            physics.set(rx, ry, MATERIALS.SAND);
+        }
 
         // Initialize Input
         // 初始化輸入
@@ -79,12 +96,13 @@ function update(dt) {
 }
 
 function draw() {
-    if (renderer) {
+    if (renderer && player) {
+        renderer.clear();
+        renderer.updateCamera(player); // New method to sync camera
+
         if (physics) {
             renderer.renderPhysics(physics, globalTime);
         }
-        if (player) {
-            // renderer.render(player, PALETTE_SLIME, globalTime); // Temporarily hide player to focus on physics grid
-        }
+        renderer.render(player, PALETTE_SLIME, globalTime);
     }
 }

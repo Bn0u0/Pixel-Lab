@@ -6,167 +6,135 @@ import { Entity } from '../core/Entity.js';
  */
 export class Player extends Entity {
     constructor(x, y, inputHandler) {
-        super(x, y);
+        super(x, y); // x: Center, y: Feet (Bottom)
         this.input = inputHandler;
-        this.speed = 40; // Pixels per second / 每秒像素速度
 
-        // 3D/Jump Physics
-        this.z = 0;   // Height from ground (0 is ground, negative is up)
-        this.vz = 0;  // Vertical velocity
-        this.velocity = { x: 0, y: 0 }; // For compatibility with renderer logic
+        // Physics Properties
+        this.velocity = { x: 0, y: 0 };
+        this.isGrounded = false;
+        this.facing = 1; // 1: Right, -1: Left
+
+        // Constants
+        this.CONST = {
+            SPEED: 80,         // Max Run Speed
+            ACCEL: 600,        // Horizontal Acceleration
+            FRICTION: 12,      // Ground Friction
+            AIR_RESISTANCE: 2, // Air Friction
+            GRAVITY: 900,      // Gravity Force (Pixels/s^2)
+            JUMP_FORCE: -350,  // Jump Impulse (Negative Y is Up)
+            MAX_FALL: 600,     // Terminal Velocity
+            WIDTH: 6,          // Hitbox Width (Radius) - Slime is narrow
+            HEIGHT: 15         // Hitbox Height (Slime is short, not 40!)
+        };
     }
 
     update(dt, physics) {
-        // --- 1. Control Force (Input) ---
-        // 輸入控制力
-        const ACCEL = 500;
-        const FRICTION = 8; // Damping
+        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, WIDTH, HEIGHT } = this.CONST;
 
-        let ax = 0;
-        let ay = 0;
+        // --- 1. Input Processing (Horizontal) ---
+        let dirX = 0;
+        if (this.input.isKeyDown('KeyA') || this.input.isKeyDown('ArrowLeft')) dirX -= 1;
+        if (this.input.isKeyDown('KeyD') || this.input.isKeyDown('ArrowRight')) dirX += 1;
 
-        // AIMING (Twin Stick)
-        const mouse = this.input.getMousePos();
-        // Calculate angle relative to center screen (which is where player is, relatively, or need camera offset?)
-        // For MVP, assume player is center.
-        // Or better, convert player.x to screen coords?
-        // Player (x,y) is in Grid Space. Mouse is in Screen Space.
-        // ScreenX = (PlayerX * Scale) + OffsetX.
-        // But we don't know OffsetX here easily without Camera.
-        // Let's simplified: If mouse is on right half of screen, aim right.
-        if (mouse.x > window.innerWidth / 2) {
-            this.facing = 1; // Right
+        if (dirX !== 0) {
+            this.facing = dirX;
+            // Apply Acceleration
+            this.velocity.x += dirX * ACCEL * dt;
         } else {
-            this.facing = -1; // Left
+            // Apply Friction
+            const damping = this.isGrounded ? FRICTION : AIR_RESISTANCE;
+            this.velocity.x -= this.velocity.x * damping * dt;
+            // Snap to 0
+            if (Math.abs(this.velocity.x) < 5) this.velocity.x = 0;
         }
 
-        // WASD / Arrow Keys
-        if (this.input.isKeyDown('ArrowUp') || this.input.isKeyDown('KeyW')) ay -= 1;
-        if (this.input.isKeyDown('ArrowDown') || this.input.isKeyDown('KeyS')) ay += 1;
-        if (this.input.isKeyDown('ArrowLeft') || this.input.isKeyDown('KeyA')) ax -= 1;
-        if (this.input.isKeyDown('ArrowRight') || this.input.isKeyDown('KeyD')) ax += 1;
+        // Clamp Speed
+        if (this.velocity.x > SPEED) this.velocity.x = SPEED;
+        if (this.velocity.x < -SPEED) this.velocity.x = -SPEED;
 
-        // Normalize Acceleration
-        if (ax !== 0 || ay !== 0) {
-            const len = Math.sqrt(ax * ax + ay * ay);
-            ax /= len;
-            ay /= len;
+        // --- 2. Input Processing (Jump) ---
+        // Jump only if grounded
+        if (this.isGrounded && (this.input.isKeyDown('KeyW') || this.input.isKeyDown('Space') || this.input.isKeyDown('ArrowUp'))) {
+            this.velocity.y = JUMP_FORCE;
+            this.isGrounded = false;
         }
 
-        // Apply Acceleration
-        this.velocity.x += ax * ACCEL * dt;
-        this.velocity.y += ay * ACCEL * dt;
+        // --- 3. Physics Integration (Y - Gravity) ---
+        this.velocity.y += GRAVITY * dt;
+        if (this.velocity.y > MAX_FALL) this.velocity.y = MAX_FALL;
 
-        // --- 2. Apply Friction (Damping) ---
-        // 摩擦力
-        this.velocity.x -= this.velocity.x * FRICTION * dt;
-        this.velocity.y -= this.velocity.y * FRICTION * dt;
+        // --- 4. Movement & Collision (X Axis) ---
+        let nextX = this.x + this.velocity.x * dt;
 
-        // Stop if too slow (Snap to 0)
-        if (Math.abs(this.velocity.x) < 1) this.velocity.x = 0;
-        if (Math.abs(this.velocity.y) < 1) this.velocity.y = 0;
+        // World Boundary Clamp (Invisible Walls)
+        // 世界邊界限制
+        if (nextX < 2) nextX = 2; // Left Wall (with small buffer)
+        if (nextX > physics.width - 2) nextX = physics.width - 2; // Right Wall
 
-        // --- 3. Update Position (Integration) & Collision ---
-        // 位置更新與碰撞預判
+        // Check Feet and Head for wall collision
+        // Hitbox: Center X +/- 5
+        const wallCheckY = this.y - 4; // Slightly above feet
+        const wallHit = this.checkCollision(nextX + (this.velocity.x > 0 ? 5 : -5), wallCheckY, physics);
 
-        // Helper: Swept Collision (prevent tunneling)
-        // Perform movement in small steps (e.g. 1/4 of grid size) or grid-walking.
-        // For simplicity: Check every tile between start and end.
-
-        const STEP_SIZE = 1; // Check every 1 pixel for precision against 1-pixel walls
-
-        // --- Horizontal Collision ---
-        let finalX = this.x;
-        const totalDx = this.velocity.x * dt;
-        const absDx = Math.abs(totalDx);
-        const signDx = Math.sign(totalDx);
-
-        // Move in steps
-        let movedX = 0;
-        while (movedX < absDx) {
-            const step = Math.min(STEP_SIZE, absDx - movedX);
-            const tryX = finalX + signDx * step;
-
-            // Check Collision at tryX
-            // Use NextX + Offset to define hitbox edge
-            // If moving right, check right edge. If left, check left edge.
-            // Edge Offset = 8 (Radius)
-            const edgeX = tryX + (signDx > 0 ? 8 : -8);
-
-            if (this.checkCollision(edgeX, this.y, physics)) {
-                this.velocity.x = 0; // Bonk
-                break; // Stop moving
-            } else {
-                finalX = tryX;
-                movedX += step;
-            }
+        if (wallHit) {
+            this.velocity.x = 0;
+        } else {
+            this.x = nextX;
         }
-        this.x = finalX;
 
-        // --- Vertical Collision ---
+        // --- 5. Movement & Collision (Y Axis) ---
+        // Implement Swept Collision / Step Check for Y to prevent tunneling
         let finalY = this.y;
-        const totalDy = this.velocity.y * dt;
-        const absDy = Math.abs(totalDy);
-        const signDy = Math.sign(totalDy);
+        let remainingDy = this.velocity.y * dt;
+        const stepY = 1; // Check every 1 pixel (High precision for thin floors)
 
-        let movedY = 0;
-        while (movedY < absDy) {
-            const step = Math.min(STEP_SIZE, absDy - movedY);
-            const tryY = finalY + signDy * step;
+        // Direction
+        const signY = Math.sign(remainingDy);
 
-            // Edge Offset = 24? (Height 48). 
-            // Pivot is bottom-center (48).
-            // Check feet (0 offset from pivot?).
-            // If moving down, check feet (0). If moving up, check head (-48).
-            const edgeY = tryY + (signDy > 0 ? 0 : -48);
+        while (Math.abs(remainingDy) > 0) {
+            const step = Math.min(Math.abs(remainingDy), stepY) * signY;
+            const tryY = finalY + step;
 
-            if (this.checkCollision(this.x, edgeY, physics)) { // Use updated this.x
-                this.velocity.y = 0;
-                break;
-            } else {
-                finalY = tryY;
-                movedY += step;
+            // Falling
+            if (this.velocity.y > 0) {
+                if (this.checkCollision(this.x, tryY, physics)) {
+                    // Landed
+                    finalY = Math.floor(tryY);
+                    this.velocity.y = 0;
+                    this.isGrounded = true;
+                    remainingDy = 0; // Stop
+                    break;
+                } else {
+                    finalY = tryY;
+                    remainingDy -= step;
+                }
             }
+            // Jumping
+            else {
+                if (this.checkCollision(this.x, tryY - HEIGHT, physics)) {
+                    // Head Bonk
+                    this.velocity.y = 0;
+                    remainingDy = 0;
+                    break;
+                } else {
+                    finalY = tryY;
+                    remainingDy -= step;
+                }
+            }
+
+            // Safety break for infinite loops (though math should be finite)
+            if (Math.abs(remainingDy) < 0.001) break;
         }
         this.y = finalY;
-
-        // --- 4. Z-Axis Physics (Jump) ---
-        const GRAVITY = 800;
-        const JUMP_FORCE = -200;
-
-        // Apply Gravity to Vz
-        this.vz += GRAVITY * dt;
-
-        if (this.input.isKeyDown('Space') && this.z >= 0) {
-            this.vz = JUMP_FORCE;
-        }
-
-        this.z += this.vz * dt;
-
-        // Ground Collision
-        if (this.z > 0) {
-            this.z = 0;
-            this.vz = 0;
-        }
     }
 
     checkCollision(x, y, physics) {
         if (!physics) return false;
-
-        // MVP: Check Center Bottom point (Feet)
-        // Sprite is 32x24 ? No scaling applied here?
-        // Coordinate system: Player.x is in "Game Pixels" (32x48 grid space? No, visual space / scale?)
-        // Wait, main.js spawns at GRID_WIDTH/2 = 16.
-        // So Player.x IS in Grid Space.
-
         const gx = Math.floor(x);
         const gy = Math.floor(y);
-
-        // Get material
         const mat = physics.get(gx, gy);
         const props = physics.constructor.getProperties(mat);
-
-        // Collide if solid
+        // console.log(`Check Collision: (${x.toFixed(2)}, ${y.toFixed(2)}) -> [${gx}, ${gy}] = ID ${mat} (${props.type})`);
         return props.type === 'solid';
     }
 }

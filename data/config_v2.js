@@ -6,12 +6,13 @@
 export const CONFIG = {
     // Pixel Scale: Controls the display size (Logic Res * Scale = Display Res)
     // 像素縮放倍率
-    PIXEL_SCALE: 4,
+    PIXEL_SCALE: 6,
 
-    // Logical Resolution (32x48 Fighting Game Standard)
+    // Logical Resolution (Wide World)
     // 邏輯解析度 (Grid Standard)
-    GRID_WIDTH: 32,
-    GRID_HEIGHT: 48,
+    // 1024 width covers the requesting -500 to +500 range (from center)
+    GRID_WIDTH: 1024,
+    GRID_HEIGHT: 144,
 
     // Target FPS
     // 目標幀率

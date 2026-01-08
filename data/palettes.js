@@ -52,6 +52,8 @@ export const PALETTE_SLIME = {
     'H': [255, 255, 255, 255],
     // E: Eyes (Black)
     'E': [20, 20, 30, 255],
+    // #: Outline (Black)
+    '#': [10, 10, 10, 255],
     // C: Cheek (Blush)
     'C': [255, 150, 150, 200],
     // S: Shadow (Darker Blue)

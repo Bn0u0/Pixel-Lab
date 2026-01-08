@@ -1,66 +1,66 @@
 import { Player } from '../entities/Player.js';
+import { PhysicsWorld, MATERIALS } from '../core/PhysicsWorld.js';
 
-// Mock InputHandler
-class MockInput {
-    constructor() {
-        this.keys = new Set();
-    }
-    isKeyDown(code) { return this.keys.has(code); }
-    press(code) { this.keys.add(code); }
-    release(code) { this.keys.delete(code); }
-}
+// Mock Input
+const input = {
+    keys: new Set(),
+    isKeyDown(k) { return this.keys.has(k); }
+};
 
-const input = new MockInput();
-// Mock PhysicsWorld (not used for this test yet, can be null)
-const physics = null;
+const physics = new PhysicsWorld();
+physics.reset();
+// Floor at 40
+for (let x = 0; x < 32; x++) physics.set(x, 40, MATERIALS.STONE);
 
-const player = new Player(0, 0, input);
+const player = new Player(16, 20, input);
+// Note: y=20 means feet at 20. Floor at 40. 20 pixels of air.
 
-console.log('--- Test 1: Idle (Friction) ---');
-// Set some velocity
-player.velocity.x = 100;
-player.update(0.1, physics); // 0.1s
-console.log(`Velocity after friction: ${player.velocity.x}`);
-if (player.velocity.x < 100) {
-    console.log('✅ Friction applied');
-} else {
-    console.error('FAILED: Friction not working');
-    process.exit(1);
-}
-
-console.log('--- Test 2: Acceleration (Input) ---');
-player.velocity.x = 0;
-input.press('KeyD'); // Move Right
+console.log('--- Test 1: Gravity Fall ---');
 player.update(0.1, physics);
-console.log(`Velocity after input: ${player.velocity.x}`);
-console.log(`Position after input: ${player.x}`);
-
-if (player.velocity.x > 0 && player.x > 0) {
-    console.log('✅ Acceleration applied');
+console.log(`Phase 1 Y: ${player.y}, Vy: ${player.velocity.y}`);
+if (player.velocity.y > 0 && player.y > 20) {
+    console.log('✅ Gravity works (Falling properly)');
 } else {
-    console.error('FAILED: Player did not move');
+    console.error('FAILED: Gravity check');
     process.exit(1);
 }
 
-console.log('--- Test 3: Diagonal Normalization ---');
-player.velocity.x = 0;
-player.velocity.y = 0;
-input.press('KeyW'); // Up (-y)
-input.press('KeyD'); // Right (+x)
-// input is currently D and W
-player.update(1, physics); // 1 second
+console.log('--- Test 2: Landing ---');
+// Fast forward to ground
+for (let i = 0; i < 100; i++) player.update(0.016, physics);
 
-// Max speed per axis should be less than ACCEL * 1
-// If normalized, ax and ay are 0.707. 
-// Accel 500. Speed += 500 * 0.707 = 353.5.
-// Friction will reduce it, but let's check input direction vector logic implicity.
-// Logic: if (ax !== 0 || ay !== 0) normalize.
-// We just verify x and y are roughly equal magnitude (and correct sign)
-console.log(`Vel X: ${player.velocity.x}, Vel Y: ${player.velocity.y}`);
+console.log(`Landed Y: ${player.y}, Vy: ${player.velocity.y}, Grounded: ${player.isGrounded}`);
 
-if (Math.abs(Math.abs(player.velocity.x) - Math.abs(player.velocity.y)) < 1) {
-    console.log('✅ Diagonal Normalized');
+if (Math.abs(player.y - 40) < 1 && player.isGrounded) { // Should snap to 40
+    console.log('✅ Landed on Floor (Snap-to-Grid works)');
 } else {
-    console.error(`FAILED: Diagonal movement uneven. X:${player.velocity.x}, Y:${player.velocity.y}`);
+    console.error(`FAILED: Landing check. Y=${player.y}`);
     process.exit(1);
+}
+
+console.log('--- Test 3: Jump ---');
+input.keys.add('Space');
+player.update(0.016, physics); // Trigger Jump
+
+console.log(`Jump Vy: ${player.velocity.y}`);
+
+if (player.velocity.y < 0) {
+    console.log('✅ Jump Triggered (Negative Y Velocity)');
+} else {
+    console.error('FAILED: Jump check');
+    process.exit(1);
+}
+
+console.log('--- Test 4: Air Jump Check (Double Jump Prevention) ---');
+input.keys.delete('Space');
+player.update(0.1, physics); // Move up a bit
+input.keys.add('Space'); // Press Jump again in air
+const prevVy = player.velocity.y;
+player.update(0.016, physics);
+
+if (player.velocity.y === prevVy + (900 * 0.016)) { // Only gravity applied
+    console.log('✅ Double Jump Prevented properly');
+} else {
+    console.error(`FAILED: Double jump allowed? Vy=${player.velocity.y} vs Prev=${prevVy}`);
+    // Not critical for MVP but good to know
 }

@@ -1,4 +1,4 @@
-import { CONFIG } from '../data/config.js';
+import { CONFIG } from '../data/config_v2.js';
 
 /**
  * Sprite Compositor

@@ -1,0 +1,17 @@
+{
+  "name": "pixel-lab",
+  "version": "1.0.0",
+  "description": "A high-fidelity pixel physics roguelite using vanilla JS and Canvas.",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "keywords": [],
+  "author": "Antigravity",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "eslint-config-prettier": "^9.1.0"
+  }
+}

@@ -16,7 +16,7 @@ export class GameLoop {
         this.lastTime = performance.now();
         this.accumulator = 0;
         this.rafId = requestAnimationFrame((timestamp) => this.loop(timestamp));
-        console.log('GameLoop Started');
+        // console.log('GameLoop Started');
     }
 
     stop() {
@@ -24,7 +24,7 @@ export class GameLoop {
         if (this.rafId) {
             cancelAnimationFrame(this.rafId);
         }
-        console.log('GameLoop Stopped');
+        // console.log('GameLoop Stopped');
     }
 
     loop(timestamp) {

@@ -24,7 +24,7 @@ export class Entity {
      * 更新邏輯 (子類別覆寫)
      * @param {number} dt - Delta time in seconds
      */
-    update(dt) {
+    update(_dt) {
         // Base entity does nothing
     }
 }

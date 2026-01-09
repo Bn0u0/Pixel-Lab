@@ -29,7 +29,7 @@ export class Player extends Entity {
     }
 
     update(dt, physics) {
-        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, WIDTH, HEIGHT } = this.CONST;
+        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, HEIGHT } = this.CONST;
 
         // --- 1. Input Processing (Horizontal) ---
         let dirX = 0;

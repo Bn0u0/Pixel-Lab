@@ -1,4 +1,4 @@
-import { ASSET_REGISTRY, getAssetsBySlot } from '../data/registry.js';
+import { getAssetsBySlot } from '../data/registry.js';
 
 /**
  * Wardrobe UI Manager
@@ -42,7 +42,7 @@ export class WardrobeUI {
             unequipBtn.textContent = 'None';
             unequipBtn.onclick = () => {
                 this.player.equip(slot, null);
-                console.log(`Unequipped ${slot}`);
+                // console.log(`Unequipped ${slot}`);
             };
             section.appendChild(unequipBtn);
         }
@@ -54,7 +54,7 @@ export class WardrobeUI {
             btn.className = 'item-btn';
             btn.onclick = () => {
                 this.player.equip(slot, asset.sprite);
-                console.log(`Equipped ${asset.name} to ${slot}`);
+                // console.log(`Equipped ${asset.name} to ${slot}`);
             };
             section.appendChild(btn);
         });

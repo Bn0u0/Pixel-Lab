@@ -95,7 +95,7 @@ export class PhysicsWorld {
     }
 
     // Main step - Cellular Automata Logic
-    update(dt) {
+    update(_dt) {
         // Create Next Frame Active Set
         // We iterate currently active chunks. If anything moves, we add to next active set.
         // However, 'activeChunks' is modified during updateSand? 

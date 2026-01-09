@@ -48,7 +48,7 @@ def validate_file(filepath):
     return errors
 
 def main():
-    print(f"🔍 Validating Assets in {SEARCH_DIR}...")
+    print(f"[SEARCH] Validating Assets in {SEARCH_DIR}...")
     
     all_errors = []
     scanned_count = 0
@@ -69,12 +69,12 @@ def main():
                     all_errors.append(f"[{file_id}] {err}")
 
     if all_errors:
-        print(f"❌ Validation FAILED. Found {len(all_errors)} errors:")
+        print(f"[FAIL] Validation FAILED. Found {len(all_errors)} errors:")
         for err in all_errors:
             print(f"  - {err}")
         sys.exit(1)
     else:
-        print(f"✅ All {scanned_count} files passed validation. (Target: {TARGET_WIDTH}x{TARGET_HEIGHT})")
+        print(f"[PASS] All {scanned_count} files passed validation. (Target: {TARGET_WIDTH}x{TARGET_HEIGHT})")
         sys.exit(0)
 
 if __name__ == "__main__":

@@ -156,7 +156,7 @@ export class PixelRenderer {
 
         // Calculate Stretch based on Velocity (use entity.velocity.y which logic maps to vz)
         let stretch = 1.0;
-        let vy = entity.velocity ? entity.velocity.y : 0;
+        const vy = entity.velocity ? entity.velocity.y : 0;
 
         if (Math.abs(vy) > 10) { // Threshold for movement stretch
             // 垂直移動時拉長 (Velocity is usually high, e.g. -200 to +200)
@@ -190,7 +190,7 @@ export class PixelRenderer {
 
     // --- Day 1: Physics Rendering ---
     // 物理渲染
-    renderPhysics(physics, time) {
+    renderPhysics(physics, _time) {
         // 使用獨立的物理緩衝區 (Physics Buffer)
         if (!this.physicsBuffer) {
             this.physicsBuffer = document.createElement('canvas');

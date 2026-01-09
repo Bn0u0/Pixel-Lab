@@ -7,19 +7,17 @@ import { PhysicsWorld, MATERIALS } from './core/PhysicsWorld.js';
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 // import { SPRITE_HUMAN_BASE } from './data/library/bodies/human_base.js';
 // import { SPRITE_PANTS_BASIC } from './data/library/bottoms/pants_basic.js';
-import { PALETTE_DARK_KNIGHT, PALETTE_SLIME } from './data/palettes.js';
+import { PALETTE_SLIME } from './data/palettes.js';
 import { Player } from './entities/Player.js';
 import { WardrobeUI } from './ui/WardrobeUI.js';
 
-console.log('Project Initialized');
-console.log(`Pixel Scale: ${CONFIG.PIXEL_SCALE}`);
-console.log(`World Width: ${CONFIG.GRID_WIDTH} (Expected: 1024)`);
+// console.log('Project Initialized');
 
 let gameLoop;
 let renderer;
 let input;
 let player;
-let wardrobe;
+// let wardrobe;
 let physics;
 let globalTime = 0;
 
@@ -67,7 +65,7 @@ window.onload = () => {
 
         // Initialize UI
         // 初始化介面
-        wardrobe = new WardrobeUI(player);
+        new WardrobeUI(player);
 
         // Initialize Game Loop
         // 初始化遊戲迴圈

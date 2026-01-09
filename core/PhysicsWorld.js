@@ -24,6 +24,8 @@ const MATERIAL_PROPS = {
 };
 
 export class PhysicsWorld {
+    static MATERIALS = MATERIALS;
+
     constructor() {
         this.width = CONFIG.GRID_WIDTH;
         this.height = CONFIG.GRID_HEIGHT;

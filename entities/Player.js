@@ -23,6 +23,9 @@ export class Player extends Entity {
         this.isGrounded = false;
         this.facing = 1; // 1: Right, -1: Left
 
+        // Visual Properties (Squash & Stretch)
+        this.scale = { x: 1, y: 1 };
+
         // State Machine
         this.state = STATE.FALL;
         this.stateTimer = 0; // For tracking state duration (Dash/Devour)
@@ -50,6 +53,12 @@ export class Player extends Entity {
 
     update(dt, physics) {
         const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, DASH_SPEED, HEIGHT } = this.CONST;
+
+        // --- Visuals: Smooth Scale (Lerp back to 1) ---
+        // Lerp speed: 10.0 for snappy return
+        const lerpSpeed = 10.0 * dt;
+        this.scale.x += (1 - this.scale.x) * lerpSpeed;
+        this.scale.y += (1 - this.scale.y) * lerpSpeed;
 
         // --- Input State Handling (Debounce) ---
         const jumpKeyDown = this.input.isKeyDown('KeyW') || this.input.isKeyDown('Space') || this.input.isKeyDown('ArrowUp');
@@ -148,12 +157,14 @@ export class Player extends Entity {
     tryJump(jumpForce) {
         // Ground Jump or Air Jump
         if (this.isGrounded) {
+            this.triggerSquash(0.7, 1.3); // Stretch Up
             this.velocity.y = jumpForce;
             this.isGrounded = false;
             this.jumpCount = 1;
             this.setState(STATE.JUMP);
             return true;
         } else if (this.jumpCount < this.CONST.MAX_JUMPS) {
+            this.triggerSquash(0.6, 1.4); // Air Jump Stretch (More exaggerated)
             this.velocity.y = jumpForce; // Full Reset of vertical velocity
             this.jumpCount++;
             this.setState(STATE.JUMP);
@@ -165,6 +176,7 @@ export class Player extends Entity {
     tryDash() {
         // Press 'Shift' or 'Z' to Dash
         if (this.input.isKeyDown('KeyZ') || this.input.isKeyDown('ShiftLeft')) {
+            this.triggerSquash(1.4, 0.6); // Flat Stretch
             this.setState(STATE.DASH);
             return true;
         }
@@ -178,6 +190,11 @@ export class Player extends Entity {
             return true;
         }
         return false;
+    }
+
+    triggerSquash(x, y) {
+        this.scale.x = x;
+        this.scale.y = y;
     }
 
     setState(newState) {
@@ -230,6 +247,15 @@ export class Player extends Entity {
             if (this.velocity.y > 0) {
                 // Falling
                 if (this.checkCollision(this.x, tryY, physics)) {
+                    // Landed Logic
+                    if (!this.isGrounded) {
+                        // Impact Squash based on speed
+                        // Small fall -> small squash. Big fall -> big squash.
+                        // Max squash limited to 1.5, 0.5
+                        const impact = Math.min(Math.abs(this.velocity.y) / 600, 0.5);
+                        if (impact > 0.1) this.triggerSquash(1 + impact, 1 - impact);
+                    }
+
                     finalY = Math.floor(tryY);
                     this.velocity.y = 0;
                     this.isGrounded = true;

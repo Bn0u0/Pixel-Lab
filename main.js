@@ -2,105 +2,77 @@ import { CONFIG } from './data/config_v2.js';
 import { GameLoop } from './core/GameLoop.js';
 import { PixelRenderer } from './render/PixelRenderer.js';
 import { InputHandler } from './core/InputHandler.js';
-import { PhysicsWorld, MATERIALS } from './core/PhysicsWorld.js';
-
-import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
-// import { SPRITE_HUMAN_BASE } from './data/library/bodies/human_base.js';
-// import { SPRITE_PANTS_BASIC } from './data/library/bottoms/pants_basic.js';
-import { PALETTE_SLIME } from './data/palettes.js';
+import { PhysicsWorld } from './core/PhysicsWorld.js';
+import { MapManager } from './core/MapManager.js';
 import { Player } from './entities/Player.js';
+import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
+import { PALETTE_SLIME } from './data/palettes.js';
 import { WardrobeUI } from './ui/WardrobeUI.js';
 
-// console.log('Project Initialized');
+// --- System Initialization ---
+const renderer = new PixelRenderer('game-world');
+const physics = new PhysicsWorld(CONFIG.GRID_WIDTH, CONFIG.GRID_HEIGHT);
+const input = new InputHandler();
+const mapManager = new MapManager();
 
-let gameLoop;
-let renderer;
-let input;
+// --- Game State ---
 let player;
-// let wardrobe;
-let physics;
+let gameLoop;
 let globalTime = 0;
 
-window.onload = () => {
-    try {
-        // Initialize Renderer
-        // 初始化渲染器
-        renderer = new PixelRenderer('game-world');
+// --- Core Logic ---
 
-        // Initialize Physics (Day 1 Core)
-        // 初始化物理引擎
-        physics = new PhysicsWorld();
+const update = (dt) => {
+    globalTime += dt;
+    if (player) {
+        player.update(dt, physics);
+        renderer.updateCamera(player);
+    }
+    physics.update(dt);
+};
 
-        // --- SANDBOX SETUP (Day 2 Demo) ---
-        // Create a floor
-        for (let x = 0; x < CONFIG.GRID_WIDTH; x++) {
-            physics.set(x, CONFIG.GRID_HEIGHT - 1, MATERIALS.STONE);
-            physics.set(x, CONFIG.GRID_HEIGHT - 2, MATERIALS.STONE);
-        }
+const draw = () => {
+    renderer.clear();
 
-        // Walls removed by user request (Open World)
+    // 1. Render Background / Physics
+    renderer.renderPhysics(physics, globalTime);
 
-        // Pour some sand
-        for (let i = 0; i < 2000; i++) { // More sand for larger world!
-            const rx = Math.floor(Math.random() * (CONFIG.GRID_WIDTH - 4)) + 2;
-            const ry = Math.floor(Math.random() * (CONFIG.GRID_HEIGHT / 2)); // Top half area
-            physics.set(rx, ry, MATERIALS.SAND);
-        }
-
-        // Initialize Input
-        // 初始化輸入
-        input = new InputHandler();
-
-        // Initialize Player
-        // 初始化玩家
-        // Spawn in center of logical grid (e.g., 16, 24)
-        const startX = CONFIG.GRID_WIDTH / 2;
-        const startY = CONFIG.GRID_HEIGHT / 2;
-        player = new Player(startX, startY, input);
-
-        // Equip Starting Gear (Base + Pants for decency)
-        // 裝備初始裝備
-        player.equip('body', SPRITE_SLIME_BASE);
-        // player.equip('bottoms', SPRITE_PANTS_BASIC); // Slimes don't wear pants... yet
-
-        // Initialize UI
-        // 初始化介面
-        new WardrobeUI(player);
-
-        // Initialize Game Loop
-        // 初始化遊戲迴圈
-        gameLoop = new GameLoop(
-            (dt) => update(dt),
-            () => draw()
-        );
-
-        gameLoop.start();
-
-    } catch (e) {
-        console.error('Initialization Failed:', e);
+    // 2. Render Player
+    if (player) {
+        renderer.render(player, PALETTE_SLIME, globalTime);
     }
 };
 
-function update(dt) {
-    globalTime += dt;
+// --- Initialization Sequence ---
 
-    if (player) {
-        player.update(dt, physics);
-    }
+async function startGame() {
+    try {
+        console.log('🚀 System Init...');
 
-    if (physics) {
-        physics.update(dt);
+        // 1. Create Player Instance (Temp Position)
+        player = new Player(0, 0, input);
+
+        // 2. Load Map (Will update Player Position)
+        console.log('🗺️ Loading Level 1...');
+        await mapManager.loadLevel('level_1', physics, player);
+
+        // 3. Equip Visuals
+        console.log('👕 Equipping Gear...');
+        player.equip('body', SPRITE_SLIME_BASE);
+
+        // 4. Init UI
+        new WardrobeUI(player);
+
+        // 5. Start Loop
+        console.log('✅ Starting Rules Engine...');
+        gameLoop = new GameLoop(update, draw, CONFIG.FPS);
+        gameLoop.start();
+
+    } catch (e) {
+        console.error('❌ Critical Failure:', e);
+        // Fallback: Draw Error or alert
     }
 }
 
-function draw() {
-    if (renderer && player) {
-        renderer.clear();
-        renderer.updateCamera(player); // New method to sync camera
-
-        if (physics) {
-            renderer.renderPhysics(physics, globalTime);
-        }
-        renderer.render(player, PALETTE_SLIME, globalTime);
-    }
-}
+// Start
+startGame();

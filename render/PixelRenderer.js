@@ -19,8 +19,23 @@ export class PixelRenderer {
 
     init() {
         this.ctx.imageSmoothingEnabled = false;
+
+        // Initialize Scale from Config
+        this.scale = CONFIG.PIXEL_SCALE;
+
         this.resize();
         window.addEventListener('resize', () => this.resize());
+
+        // Zoom Handler
+        window.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.001;
+            // Negative deltaY is zoom in (scroll up)
+            this.scale -= e.deltaY * zoomSpeed * this.scale;
+
+            // Clamp Scale (Min 1x, Max 20x)
+            this.scale = Math.max(1, Math.min(this.scale, 20));
+        }, { passive: false });
     }
 
     resize() {
@@ -37,7 +52,7 @@ export class PixelRenderer {
 
     updateCamera(entity) {
         if (!entity) return;
-        const scale = CONFIG.PIXEL_SCALE;
+        const scale = this.scale; // Use dynamic scale
 
         // Goal: Keep entity in center of screen
         const screenCX = this.canvas.width / 2;
@@ -63,11 +78,6 @@ export class PixelRenderer {
         const maxCamY = (CONFIG.GRID_HEIGHT * scale) - this.canvas.height;
 
         if (maxCamX < 0) { // Center if world smaller than screen
-            this.cameraX = maxCamX / 2; // (World - Screen) / 2 is negative center.. wait.
-            // If World (800) < Screen (1000). Offset should be (1000-800)/2 = 100 positive?
-            // If we translate by -Camera.
-            // Translate(100) -> Camera = -100.
-            // (WorldWidth - ScreenWidth) / 2 = (800 - 1000)/2 = -100. Correct.
             this.cameraX = (CONFIG.GRID_WIDTH * scale - this.canvas.width) / 2;
         } else {
             this.cameraX = Math.max(0, Math.min(this.cameraX, maxCamX));
@@ -95,18 +105,17 @@ export class PixelRenderer {
     render(entity, palette, time) {
         this.ctx.save();
 
-        const scale = CONFIG.PIXEL_SCALE;
+        const scale = this.scale; // Use dynamic scale
 
-        // Apply Camera Transform (Integer snap to avoid blurry pixels)
-        // We translate everything by -camera
-        this.ctx.translate(-Math.floor(this.cameraX), -Math.floor(this.cameraY));
+        // Apply Camera Transform (Float for smooth movement)
+        // 移除 Math.floor 以獲得更平滑的運鏡 (Sub-pixel camera)
+        this.ctx.translate(-this.cameraX, -this.cameraY);
         this.ctx.scale(scale, scale);
 
         // 1. Compose Sprite
         const composedSprite = this.compositor.compose(entity.equipment);
 
         // 2. Clear & Draw to Offscreen Buffer (Sprite Buffer)
-        // 使用獨立的精靈緩衝區 (Sprite Buffer)
         if (!this.spriteBuffer || this.spriteBuffer.width !== CONFIG.GRID_WIDTH) {
             this.spriteBuffer = document.createElement('canvas');
             this.spriteBuffer.width = CONFIG.GRID_WIDTH;
@@ -116,17 +125,10 @@ export class PixelRenderer {
         this.spriteCtx.clearRect(0, 0, CONFIG.GRID_WIDTH, CONFIG.GRID_HEIGHT);
 
         // Draw Pixels to Buffer
-        // Optimization: Only draw sprite pixels? 
-        // Wait, standard sprite is 32x48. 
-        // The buffer loop below iterates GRID_WIDTH. 
-        // If GRID is 256, but sprite is 32, we burn frames scanning empty.
-        // We should scan the SPRITE DIMENSIONS (32x48).
-        // The 'composedSprite' is 48 rows of strings.
-
-        for (let y = 0; y < composedSprite.length; y++) { // Use sprite height
+        for (let y = 0; y < composedSprite.length; y++) {
             const row = composedSprite[y];
             if (!row) continue;
-            for (let x = 0; x < row.length; x++) { // Use sprite width
+            for (let x = 0; x < row.length; x++) {
                 const char = row[x];
                 if (char === ' ' || char === '.') continue;
 
@@ -149,36 +151,26 @@ export class PixelRenderer {
         // Calculate Position
         // Visual Anchor Correction: Player.y is Feet. Canvas draws from Top-Left.
         // Sprite Height is approx 48.
-        const bobOffset = Math.sin(time * 5) * 1;
+
+        // Fix: Only bob when idle (low velocity)
+        // 修正：只有在靜止時呼吸擺動
+        const vy = entity.velocity ? entity.velocity.y : 0;
+        const bobOffset = (Math.abs(vy) < 10) ? Math.sin(time * 5) * 1 : 0;
 
         const drawX = Math.floor(entity.x - 16); // Center X (16) to Left X
         const drawY = Math.floor(entity.y - 48 + bobOffset); // Feet Y to Top Y
-
-        // Calculate Stretch based on Velocity (use entity.velocity.y which logic maps to vz)
-        let stretch = 1.0;
-        const vy = entity.velocity ? entity.velocity.y : 0;
-
-        if (Math.abs(vy) > 10) { // Threshold for movement stretch
-            // 垂直移動時拉長 (Velocity is usually high, e.g. -200 to +200)
-            // Normalize: 200 => 0.2 stretch factor
-            stretch = 1.0 + Math.min(Math.abs(vy) * 0.001, 0.3); // Cap at 1.3x
-
-            // Invert stretch direction if falling?
-            // Usually falling is also stretched (speed lines).
-            // Landing (sudden stop) is squash.
-        } else {
-            // Idle breathing
-            stretch = 1.0 + Math.sin(time * 8) * 0.05;
-        }
-
-        const squash = 1.0 / stretch;
 
         // Draw Buffer to Main Canvas with Transform
         const pivotX = drawX + 16;
         const pivotY = drawY + 48;
 
         this.ctx.translate(pivotX, pivotY);
-        this.ctx.scale(squash, stretch);
+
+        // Use Entity Scale (controlled by Player.js)
+        if (entity.scale) {
+            this.ctx.scale(entity.scale.x, entity.scale.y);
+        }
+
         this.ctx.translate(-pivotX, -pivotY);
 
         this.ctx.drawImage(this.spriteBuffer, drawX, drawY);
@@ -244,7 +236,7 @@ export class PixelRenderer {
         // 3. Draw Buffer to Main Canvas (Scaled)
         // 繪製到主畫布
         this.ctx.imageSmoothingEnabled = false; // Ensure crisp edges (Task 109)
-        const scale = CONFIG.PIXEL_SCALE;
+        const scale = this.scale; // Use dynamic scale
 
         // Apply Camera (Inverse)
         const camX = Math.floor(this.cameraX || 0); // Use stored camera pos from render()

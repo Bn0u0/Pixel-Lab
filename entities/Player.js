@@ -1,5 +1,14 @@
 import { Entity } from '../core/Entity.js';
 
+export const STATE = {
+    IDLE: 'IDLE',
+    MOVE: 'MOVE',
+    JUMP: 'JUMP',
+    FALL: 'FALL',
+    DASH: 'DASH',
+    DEVOUR: 'DEVOUR'
+};
+
 /**
  * Player Class
  * 玩家類別
@@ -14,106 +23,228 @@ export class Player extends Entity {
         this.isGrounded = false;
         this.facing = 1; // 1: Right, -1: Left
 
+        // State Machine
+        this.state = STATE.FALL;
+        this.stateTimer = 0; // For tracking state duration (Dash/Devour)
+
+        // Jump Mechanics
+        this.jumpCount = 0;
+        this.wasJumpDown = false; // Input debouncing
+
         // Constants
         this.CONST = {
             SPEED: 80,         // Max Run Speed
             ACCEL: 600,        // Horizontal Acceleration
             FRICTION: 12,      // Ground Friction
             AIR_RESISTANCE: 2, // Air Friction
-            GRAVITY: 900,      // Gravity Force (Pixels/s^2)
-            JUMP_FORCE: -350,  // Jump Impulse (Negative Y is Up)
+            GRAVITY: 900,      // Gravity Force
+            JUMP_FORCE: -350,  // Jump Impulse
+            MAX_JUMPS: 2,      // Double Jump
             MAX_FALL: 600,     // Terminal Velocity
-            WIDTH: 6,          // Hitbox Width (Radius) - Slime is narrow
-            HEIGHT: 15         // Hitbox Height (Slime is short, not 40!)
+            DASH_SPEED: 250,   // Dash Speed
+            DASH_TIME: 0.15,   // Dash Duration (seconds)
+            DEVOUR_TIME: 0.4,  // Devour Duration (seconds)
+            HEIGHT: 15         // Hitbox Height
         };
     }
 
     update(dt, physics) {
-        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, HEIGHT } = this.CONST;
+        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, DASH_SPEED, HEIGHT } = this.CONST;
 
-        // --- 1. Input Processing (Horizontal) ---
+        // --- Input State Handling (Debounce) ---
+        const jumpKeyDown = this.input.isKeyDown('KeyW') || this.input.isKeyDown('Space') || this.input.isKeyDown('ArrowUp');
+        const jumpJustPressed = jumpKeyDown && !this.wasJumpDown;
+        this.wasJumpDown = jumpKeyDown;
+
+        // --- 1. State Machine Logic ---
+        switch (this.state) {
+            case STATE.IDLE:
+                this.handleMovement(dt, ACCEL, FRICTION);
+                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break;
+                if (this.tryDash()) break;
+                if (this.tryDevour()) break;
+
+                // Transition
+                if (Math.abs(this.velocity.x) > 10) this.setState(STATE.MOVE);
+                if (!this.isGrounded) this.setState(STATE.FALL);
+                break;
+
+            case STATE.MOVE:
+                this.handleMovement(dt, ACCEL, FRICTION);
+                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break;
+                if (this.tryDash()) break;
+                if (this.tryDevour()) break;
+
+                // Transition
+                if (Math.abs(this.velocity.x) <= 10) this.setState(STATE.IDLE);
+                if (!this.isGrounded) this.setState(STATE.FALL);
+                break;
+
+            case STATE.JUMP:
+            case STATE.FALL:
+                this.handleMovement(dt, ACCEL, AIR_RESISTANCE); // Air control? Yes
+                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break; // Air Jump
+                if (this.tryDash()) break;
+                // Note: No Devour in Air
+
+                // Gravity
+                this.velocity.y += GRAVITY * dt;
+
+                // Transition
+                if (this.velocity.y > 0) this.state = STATE.FALL; // Just update label
+                if (this.isGrounded) this.setState(STATE.IDLE);
+                break;
+
+            case STATE.DASH:
+                this.stateTimer -= dt;
+                this.velocity.x = this.facing * DASH_SPEED;
+                this.velocity.y = 0; // Defy gravity
+
+                if (this.stateTimer <= 0) {
+                    this.velocity.x = 0; // Stop after dash? or carry momentum? Let's stop to be snappy.
+                    this.setState(this.isGrounded ? STATE.IDLE : STATE.FALL);
+                }
+                break;
+
+            case STATE.DEVOUR:
+                this.stateTimer -= dt;
+                this.velocity.x *= 0.9; // Rapid slowdown
+                // Gravity applies? Yes, in case platform breaks
+                this.velocity.y += GRAVITY * dt;
+
+                if (this.stateTimer <= 0) {
+                    this.setState(STATE.IDLE);
+                }
+                break;
+        }
+
+        // Clamp & Terminal Velocity
+        if (this.state !== STATE.DASH) {
+            if (this.velocity.x > SPEED) this.velocity.x = SPEED;
+            if (this.velocity.x < -SPEED) this.velocity.x = -SPEED;
+            if (this.velocity.y > MAX_FALL) this.velocity.y = MAX_FALL;
+        }
+
+        // --- 2. Physics Integration ---
+        this.applyPhysics(dt, physics, HEIGHT);
+    }
+
+    // --- Actions ---
+
+    handleMovement(dt, accel, damping) {
         let dirX = 0;
         if (this.input.isKeyDown('KeyA') || this.input.isKeyDown('ArrowLeft')) dirX -= 1;
         if (this.input.isKeyDown('KeyD') || this.input.isKeyDown('ArrowRight')) dirX += 1;
 
         if (dirX !== 0) {
             this.facing = dirX;
-            // Apply Acceleration
-            this.velocity.x += dirX * ACCEL * dt;
+            this.velocity.x += dirX * accel * dt;
         } else {
-            // Apply Friction
-            const damping = this.isGrounded ? FRICTION : AIR_RESISTANCE;
             this.velocity.x -= this.velocity.x * damping * dt;
-            // Snap to 0
             if (Math.abs(this.velocity.x) < 5) this.velocity.x = 0;
         }
+    }
 
-        // Clamp Speed
-        if (this.velocity.x > SPEED) this.velocity.x = SPEED;
-        if (this.velocity.x < -SPEED) this.velocity.x = -SPEED;
-
-        // --- 2. Input Processing (Jump) ---
-        // Jump only if grounded
-        if (this.isGrounded && (this.input.isKeyDown('KeyW') || this.input.isKeyDown('Space') || this.input.isKeyDown('ArrowUp'))) {
-            this.velocity.y = JUMP_FORCE;
+    tryJump(jumpForce) {
+        // Ground Jump or Air Jump
+        if (this.isGrounded) {
+            this.velocity.y = jumpForce;
             this.isGrounded = false;
+            this.jumpCount = 1;
+            this.setState(STATE.JUMP);
+            return true;
+        } else if (this.jumpCount < this.CONST.MAX_JUMPS) {
+            this.velocity.y = jumpForce; // Full Reset of vertical velocity
+            this.jumpCount++;
+            this.setState(STATE.JUMP);
+            return true;
         }
+        return false;
+    }
 
-        // --- 3. Physics Integration (Y - Gravity) ---
-        this.velocity.y += GRAVITY * dt;
-        if (this.velocity.y > MAX_FALL) this.velocity.y = MAX_FALL;
+    tryDash() {
+        // Press 'Shift' or 'Z' to Dash
+        if (this.input.isKeyDown('KeyZ') || this.input.isKeyDown('ShiftLeft')) {
+            this.setState(STATE.DASH);
+            return true;
+        }
+        return false;
+    }
 
-        // --- 4. Movement & Collision (X Axis) ---
+    tryDevour() {
+        // Press 'X' or 'E' to Devour
+        if (this.input.isKeyDown('KeyX') || this.input.isKeyDown('KeyE')) {
+            this.setState(STATE.DEVOUR);
+            return true;
+        }
+        return false;
+    }
+
+    setState(newState) {
+        if (this.state === newState) return;
+
+        // Exit Logic
+        // ...
+
+        this.state = newState;
+
+        // Enter Logic
+        switch (newState) {
+            case STATE.DASH:
+                this.stateTimer = this.CONST.DASH_TIME;
+                break;
+            case STATE.DEVOUR:
+                this.stateTimer = this.CONST.DEVOUR_TIME;
+                // console.log('Nom nom nom...'); // Debug for Devour
+                break;
+        }
+        // console.log(`State: ${newState}`);
+    }
+
+    applyPhysics(dt, physics, height) {
+        // --- X Axis ---
         let nextX = this.x + this.velocity.x * dt;
 
-        // World Boundary Clamp (Invisible Walls)
-        // 世界邊界限制
-        if (nextX < 2) nextX = 2; // Left Wall (with small buffer)
-        if (nextX > physics.width - 2) nextX = physics.width - 2; // Right Wall
+        // World Boundary
+        if (nextX < 2) nextX = 2;
+        if (nextX > physics.width - 2) nextX = physics.width - 2;
 
-        // Check Feet and Head for wall collision
-        // Hitbox: Center X +/- 5
-        const wallCheckY = this.y - 4; // Slightly above feet
-        const wallHit = this.checkCollision(nextX + (this.velocity.x > 0 ? 5 : -5), wallCheckY, physics);
-
-        if (wallHit) {
+        // Collision X
+        const wallCheckY = this.y - 4;
+        if (this.checkCollision(nextX + (this.velocity.x > 0 ? 5 : -5), wallCheckY, physics)) {
             this.velocity.x = 0;
         } else {
             this.x = nextX;
         }
 
-        // --- 5. Movement & Collision (Y Axis) ---
-        // Implement Swept Collision / Step Check for Y to prevent tunneling
+        // --- Y Axis ---
         let finalY = this.y;
         let remainingDy = this.velocity.y * dt;
-        const stepY = 1; // Check every 1 pixel (High precision for thin floors)
-
-        // Direction
+        const stepY = 1;
         const signY = Math.sign(remainingDy);
 
         while (Math.abs(remainingDy) > 0) {
             const step = Math.min(Math.abs(remainingDy), stepY) * signY;
             const tryY = finalY + step;
 
-            // Falling
             if (this.velocity.y > 0) {
+                // Falling
                 if (this.checkCollision(this.x, tryY, physics)) {
-                    // Landed
                     finalY = Math.floor(tryY);
                     this.velocity.y = 0;
                     this.isGrounded = true;
-                    remainingDy = 0; // Stop
+                    this.jumpCount = 0; // Reset Jump Count
+                    remainingDy = 0;
                     break;
                 } else {
                     finalY = tryY;
+                    this.isGrounded = false; // Falling
                     remainingDy -= step;
                 }
-            }
-            // Jumping
-            else {
-                if (this.checkCollision(this.x, tryY - HEIGHT, physics)) {
-                    // Head Bonk
-                    this.velocity.y = 0;
+            } else {
+                // Jumping
+                if (this.checkCollision(this.x, tryY - height, physics)) {
+                    this.velocity.y = 0; // Head bonk
                     remainingDy = 0;
                     break;
                 } else {
@@ -121,8 +252,6 @@ export class Player extends Entity {
                     remainingDy -= step;
                 }
             }
-
-            // Safety break for infinite loops (though math should be finite)
             if (Math.abs(remainingDy) < 0.001) break;
         }
         this.y = finalY;
@@ -134,7 +263,6 @@ export class Player extends Entity {
         const gy = Math.floor(y);
         const mat = physics.get(gx, gy);
         const props = physics.constructor.getProperties(mat);
-        // console.log(`Check Collision: (${x.toFixed(2)}, ${y.toFixed(2)}) -> [${gx}, ${gy}] = ID ${mat} (${props.type})`);
         return props.type === 'solid';
     }
 }

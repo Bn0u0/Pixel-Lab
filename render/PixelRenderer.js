@@ -91,7 +91,7 @@ export class PixelRenderer {
     }
 
     _renderStaticLayer(physicsWorld) {
-        console.log('Baking Static Background Layer...');
+        // console.log('Baking Static Background Layer...');
         // Fill Background
         this.bgCtx.fillStyle = '#111';
         this.bgCtx.fillRect(0, 0, this.bgCanvas.width, this.bgCanvas.height);
@@ -116,7 +116,7 @@ export class PixelRenderer {
                 }
             }
         }
-        console.log('Baking Complete.');
+        // console.log('Baking Complete.');
     }
 
     render(entity, palette, time) {

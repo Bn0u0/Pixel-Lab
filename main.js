@@ -5,9 +5,6 @@ import { InputHandler } from './core/InputHandler.js';
 import { PhysicsWorld } from './core/PhysicsWorld.js';
 import { MapManager } from './core/MapManager.js';
 import { Player } from './entities/Player.js';
-import { Item } from './entities/Item.js';
-import { GlitchySweeper } from './entities/GlitchySweeper.js';
-import { DummyEnemy } from './entities/DummyEnemy.js';
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 import { PALETTE_SLIME } from './data/palettes.js';
 

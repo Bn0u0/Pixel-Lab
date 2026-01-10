@@ -29,13 +29,24 @@ export class PixelRenderer {
         // Disable Smoothing (Critical for Pixel Art)
         this.ctx.imageSmoothingEnabled = false;
 
+        // Static Background Buffer
+        this.bgCanvas = document.createElement('canvas');
+        this.bgCanvas.width = this.canvas.width;
+        this.bgCanvas.height = this.canvas.height;
+        this.bgCtx = this.bgCanvas.getContext('2d', { alpha: false });
+        this.bgCtx.imageSmoothingEnabled = false;
+
+        this.bgDirty = true; // Flag to trigger redraw
+
         // Camera
         this.camera = { x: 0, y: 0 };
     }
 
     clear() {
-        this.ctx.fillStyle = '#111'; // Dark background
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // Clear logic handled by background overwrite usually
+        // But for entities, we need to clear?
+        // Actually, if we draw BG over everything, we don't need clear().
+        // But let's keep it safe.
     }
 
     updateCamera(target) {
@@ -56,26 +67,56 @@ export class PixelRenderer {
     }
 
     renderPhysics(physicsWorld, _time) {
-        // const activeChunks = physicsWorld.activeChunks;
+        // 1. Check if we need to bake the static layer
+        if (this.bgDirty) {
+            this._renderStaticLayer(physicsWorld);
+            this.bgDirty = false;
+        }
 
-        // Only render visible range
-        const screenW = this.canvas.width / this.scale;
-        const screenH = this.canvas.height / this.scale;
+        // 2. Draw the cached background (Cropped by Camera)
+        // Source: bgCanvas (Full Resolution)
+        // Camera X/Y are in World Logic Units (e.g. 0-1024)
+        // bgCanvas pixels are Scaled (e.g. 0-6144)
 
-        const startX = Math.floor(this.camera.x);
-        const endX = Math.min(this.width, Math.ceil(this.camera.x + screenW));
-        const startY = Math.floor(this.camera.y);
-        const endY = Math.min(this.height, Math.ceil(this.camera.y + screenH));
+        const sx = this.camera.x * this.scale;
+        const sy = this.camera.y * this.scale;
+        const sWidth = this.canvas.width;
+        const sHeight = this.canvas.height;
 
-        for (let y = startY; y < endY; y++) {
-            for (let x = startX; x < endX; x++) {
+        this.ctx.drawImage(
+            this.bgCanvas,
+            sx, sy, sWidth, sHeight, // Source Rect
+            0, 0, this.canvas.width, this.canvas.height // Dest Rect
+        );
+    }
+
+    _renderStaticLayer(physicsWorld) {
+        console.log('Baking Static Background Layer...');
+        // Fill Background
+        this.bgCtx.fillStyle = '#111';
+        this.bgCtx.fillRect(0, 0, this.bgCanvas.width, this.bgCanvas.height);
+
+        // Iterate entire world grid
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
                 const mat = physicsWorld.get(x, y);
                 if (mat !== MATERIALS.AIR) {
                     const props = PhysicsWorld.getProperties(mat);
-                    this._drawPixel(x, y, props.color);
+                    let color = props.color;
+                    if (typeof color === 'number') {
+                        color = '#' + color.toString(16).padStart(6, '0');
+                    }
+                    this.bgCtx.fillStyle = color;
+                    this.bgCtx.fillRect(
+                        Math.floor(x * this.scale),
+                        Math.floor(y * this.scale),
+                        Math.ceil(this.scale),
+                        Math.ceil(this.scale)
+                    );
                 }
             }
         }
+        console.log('Baking Complete.');
     }
 
     render(entity, palette, time) {
@@ -121,8 +162,8 @@ export class PixelRenderer {
     }
 
     _drawSprite(spriteData, palette, x, y, sx, sy, facing) {
-        const cx = x + 16; // Center X (Sprite is 32 wide, so 16 is center)
-        const cy = y + 32; // Bottom Y (Sprite is 32 tall, we align bottom)
+        const cx = x; // Center X (Matches Entity.x)
+        const cy = y; // Bottom Y (Matches Entity.y)
 
         // Face Decoupling Keys
         const FACE_KEYS = new Set(['E', 'C']); // Eyes and Core

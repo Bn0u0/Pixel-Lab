@@ -6,11 +6,10 @@ import { PhysicsWorld } from './core/PhysicsWorld.js';
 import { MapManager } from './core/MapManager.js';
 import { Player } from './entities/Player.js';
 import { Item } from './entities/Item.js';
+import { GlitchySweeper } from './entities/GlitchySweeper.js';
 import { DummyEnemy } from './entities/DummyEnemy.js';
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 import { PALETTE_SLIME } from './data/palettes.js';
-// import { WardrobeUI } from './ui/WardrobeUI.js';
-// import { MainMenu } from './ui/MainMenu.js';
 
 // --- System Initialization ---
 const renderer = new PixelRenderer('game-world');
@@ -29,12 +28,20 @@ let globalTime = 0;
 const update = (dt) => {
     globalTime += dt;
     if (player) {
+        // Pass player to entity update for AI targeting
         player.update(dt, physics, entities);
         renderer.updateCamera(player);
     }
 
     // Update Entities
-    entities.forEach(e => e.update(dt, physics));
+    entities.forEach(e => {
+        // Pass player to enemies
+        if (e.update.length > 2) {
+            e.update(dt, physics, entities, player);
+        } else {
+            e.update(dt, physics);
+        }
+    });
 
     // Cleanup
     entities = entities.filter(e => !e.markedForDeletion);
@@ -61,44 +68,35 @@ const draw = () => {
 
 async function startGame() {
     try {
-        // console.log('🚀 System Init...');
-
-        // 1. Create Player Instance (Temp Position)
+        // 1. Create Player Instance
         player = new Player(0, 0, input);
 
         // 2. Load Map (Will update Player Position)
-        // console.log('🗺️ Loading Level 1...');
         await mapManager.loadLevel('level_1', physics, player);
 
         // 3. Equip Visuals
-        // console.log('👕 Equipping Gear...');
         player.equip('body', SPRITE_SLIME_BASE);
 
-        // TEST: Spawn Item
-        const sword = new Item(player.x + 40, player.y - 50, 'sword');
-        entities.push(sword);
+        // 4. Spawn Entities (Clean Gym Mode)
+        // No extra items or enemies for physics testing
+        // const sword = new Item(150, 200, 'sword');
+        // entities.push(sword);
 
-        const shield = new Item(player.x - 40, player.y - 50, 'shield');
-        entities.push(shield);
+        // const shield = new Item(400, 150, 'shield');
+        // entities.push(shield);
 
-        // TEST: Spawn Enemy
-        const enemy = new DummyEnemy(player.x + 100, player.y - 50);
-        entities.push(enemy);
+        // const sweeper = new GlitchySweeper(350, 250);
+        // entities.push(sweeper);
 
-        // 4. Init In-Game UI
-        // new WardrobeUI(player);
+        // const dummy = new DummyEnemy(650, 200);
+        // entities.push(dummy);
 
-        // 5. Show Main Menu & Wait for User
-        // console.log('📺 Auto-Starting Engine (UI Skipped)...');
-        // new MainMenu('game-container', () => {
-        // console.log('✅ Starting Rules Engine...');
+        // 5. Start Loop
         gameLoop = new GameLoop(update, draw, CONFIG.FPS);
         gameLoop.start();
-        // });
 
     } catch (e) {
-        // console.error('❌ Critical Failure:', e);
-        // Fallback: Draw Error or alert
+        console.error('❌ Critical Failure:', e);
     }
 }
 

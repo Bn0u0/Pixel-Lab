@@ -19,6 +19,7 @@ const MATERIAL_PROPS = {
     [MATERIALS.STONE]: { type: 'solid', gravity: false, color: 0x808080 },
     [MATERIALS.WATER]: { type: 'liquid', gravity: true, color: 0x1E90FF },
     [MATERIALS.FIRE]: { type: 'gas', gravity: false, color: 0xFF4500 },
+    [MATERIALS.ACID]: { type: 'liquid', gravity: true, color: 0x00FF00 },
     [MATERIALS.WOOD]: { type: 'solid', gravity: false, color: 0x8B4513 },
     // Defaults for others
 };
@@ -96,163 +97,11 @@ export class PhysicsWorld {
         return MATERIAL_PROPS[materialId] || { type: 'unknown', gravity: false };
     }
 
-    // Main step - Cellular Automata Logic
+    // Main step - Simplified Physics (Static World)
     update(_dt) {
-        // Create Next Frame Active Set
-        // We iterate currently active chunks. If anything moves, we add to next active set.
-        // However, 'activeChunks' is modified during updateSand? 
-        // Better: activeChunks accumulates. We verify if a chunk actually had activity?
-        // Simplified Logic: 
-        // 1. Snapshot current active chunks.
-        // 2. Clear current active chunks (or use a 'next' set).
-        // 3. Process snapshot. If activity happens, add to 'next'.
-
-        const chunksToProcess = new Set(this.activeChunks);
+        // No cellular automata update for MVP1.
+        // Static terrain is handled by collision checks in Entity.js
         this.activeChunks.clear();
-
-        // Iterate Chunks
-        // Note: For bottom-up logic, we should sort chunks? 
-        // Sand must be processed Bottom-Up globally or locally.
-        // If we process chunks in arbitrary order (Set iteration), we might break sand stacking logic at chunk borders.
-        // STABLE SOLUTION: Iterate *ALL CHUNKS* in correct order, but skip if not in Set.
-
-        for (let cy = this.rows - 1; cy >= 0; cy--) {
-            for (let cx = 0; cx < this.cols; cx++) {
-                const id = cy * this.cols + cx;
-                if (!chunksToProcess.has(id)) continue;
-
-                // Keeps chunk active for at least one frame if it was active
-                // Wait, if no sand moved, it should sleep.
-                // But we just cleared activeChunks. 
-                // We need to re-add ONLY if we find moving sand or if 'force awake' logic exists.
-                // Actually, standard CA optimization:
-                // If a cell changes, wake neighbors.
-                // So here, we default to sleeping unless updateSand says "I moved".
-                // But we must process the chunk to know if it moves?
-                // Yes. 
-
-                // Problem: If I don't add it to activeChunks, and nothing moves, it dies. Correct.
-                // But what if sand is falling IN from above? The above chunk wakes THIS chunk.
-
-                const startX = cx * this.CHUNK_SIZE;
-                const endX = Math.min(startX + this.CHUNK_SIZE, this.width);
-                const startY = cy * this.CHUNK_SIZE;
-                const endY = Math.min(startY + this.CHUNK_SIZE, this.height);
-
-                let chunkHasActivity = false;
-
-                // Scan this chunk bottom-up
-                for (let y = endY - 1; y >= startY; y--) {
-                    for (let x = startX; x < endX; x++) {
-                        const i = y * this.width + x;
-                        const cell = this.grid[i];
-
-                        if (cell === MATERIALS.SAND) {
-                            if (this.updateSand(x, y, i)) chunkHasActivity = true;
-                        } else if (cell === MATERIALS.WATER) {
-                            if (this.updateWater(x, y, i)) chunkHasActivity = true;
-                        }
-                    }
-                }
-
-                // If invalid/static sand exists, we might falsely sleep? 
-                // No, if sand didn't move, it's static.
-                // BUT: If sand TRIES to move but is blocked, it's static.
-                // Only if it MOVES do we wake.
-
-                // If this chunk had activity, it (and potentially neighbors) should be active next frame.
-                // Actually, if sand moved OUT, destination handles wake.
-                // If sand moved IN, source handles wake?
-                // Does this chunk need to stay awake? 
-                // Only if there is still "unsettled" sand? 
-                // If sand moved, it is unsettled.
-                if (chunkHasActivity) {
-                    this.activateChunk(cx, cy);
-                }
-            }
-        }
-    }
-
-    updateSand(x, y, i) {
-        const ty = y + 1;
-
-        // 1. Bottom Boundary
-        if (ty >= this.height) return false;
-
-        const below = i + this.width;
-        let target = -1;
-        let tx = x;
-
-        // 2. Try falling down
-        if (this.grid[below] === MATERIALS.AIR || this.grid[below] === MATERIALS.WATER) {
-            target = below;
-        }
-        // 3. Try diagonal left
-        else if (x > 0 && (this.grid[below - 1] === MATERIALS.AIR || this.grid[below - 1] === MATERIALS.WATER)) {
-            target = below - 1;
-            tx = x - 1;
-        }
-        // 4. Try diagonal right
-        else if (x < this.width - 1 && (this.grid[below + 1] === MATERIALS.AIR || this.grid[below + 1] === MATERIALS.WATER)) {
-            target = below + 1;
-            tx = x + 1;
-        }
-
-        if (target !== -1) {
-            // Swap (Swap logic handles Sand sinking in Water)
-            const displaced = this.grid[target];
-            this.grid[target] = MATERIALS.SAND;
-            this.grid[i] = displaced; // Put displaced material (e.g. Water) up
-
-            this.wakeChunkAt(tx, ty);
-            this.wakeChunkAt(x, y); // Wake source too for water re-settling
-            return true;
-        }
-        return false;
-    }
-
-    updateWater(x, y, i) {
-        const ty = y + 1;
-        let target = -1;
-        let tx = x;
-
-        // 1. Try falling down (Gravity)
-        if (ty < this.height) {
-            const below = i + this.width;
-            if (this.grid[below] === MATERIALS.AIR) {
-                target = below; // Fall down
-            }
-        }
-
-        // 2. Flow Left/Right if falling not possible
-        if (target === -1) {
-            // Randomly choose direction to prevent bias, or check both
-            // Simple approach: Check neighbors
-            const canLeft = x > 0 && this.grid[i - 1] === MATERIALS.AIR;
-            const canRight = x < this.width - 1 && this.grid[i + 1] === MATERIALS.AIR;
-
-            if (canLeft && canRight) {
-                // Randomize flow
-                if (Math.random() < 0.5) { target = i - 1; tx = x - 1; }
-                else { target = i + 1; tx = x + 1; }
-            } else if (canLeft) {
-                target = i - 1; tx = x - 1;
-            } else if (canRight) {
-                target = i + 1; tx = x + 1;
-            }
-        }
-
-        if (target !== -1) {
-            // Move Water
-            this.grid[target] = MATERIALS.WATER;
-            this.grid[i] = MATERIALS.AIR;
-
-            this.wakeChunkAt(tx, (target === i - 1 || target === i + 1) ? y : ty);
-            this.wakeChunkAt(x, y);
-            return true;
-        }
-
-        return false;
     }
 }
 

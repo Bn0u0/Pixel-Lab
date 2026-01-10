@@ -67,26 +67,30 @@ export class MapManager {
                 // const gridIndex = y * width + x;
 
                 // Color Mapping
-                // 1. Yellow (255, 255, 0) -> SAND
-                if (r === 255 && g === 255 && b === 0) {
-                    physics.set(x, y, MATERIALS.SAND);
-                }
-                // 2. Grey (128, 128, 128) -> STONE
-                else if (r === 128 && g === 128 && b === 128) {
+                // 1. Grey (128, 128, 128) -> STONE (Solid Ground)
+                // Color Mapping with Tolerance (Browser gamma correction safety)
+
+                // 1. Grey -> STONE (Solid Ground)
+                if (Math.abs(r - 128) < 10 && Math.abs(g - 128) < 10 && Math.abs(b - 128) < 10) {
                     physics.set(x, y, MATERIALS.STONE);
                 }
-                // 3. Blue (0, 0, 255) -> PLAYER START
-                else if (r === 0 && g === 0 && b === 255) {
+                // 2. Green -> ACID (Hazard)
+                else if (r < 50 && g > 200 && b < 50) {
+                    physics.set(x, y, MATERIALS.ACID);
+                }
+                // 3. Blue -> PLAYER START
+                else if (r < 50 && g < 50 && b > 200) {
                     if (player) {
                         player.x = x;
                         player.y = y;
                         player.velocity = { x: 0, y: 0 };
                     }
-                    physics.set(x, y, MATERIALS.AIR); // Clear spawn point
+                    physics.set(x, y, MATERIALS.AIR);
                 }
-                // 4. Dodger Blue (30, 144, 255) -> WATER
-                else if (r === 30 && g === 144 && b === 255) {
-                    physics.set(x, y, MATERIALS.WATER);
+
+                // Debug Log (First non-black pixel found)
+                if (r > 0 && !(Math.abs(r - 128) < 10) && physics.get(x, y) === MATERIALS.AIR) {
+                    // console.warn(`Unmapped Color at ${x},${y}: ${r},${g},${b}`);
                 }
                 // Default: AIR
             }

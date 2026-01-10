@@ -2,7 +2,7 @@
  * Core Constants
  * 核心常數
  */
-import { CONFIG } from '../data/config_v2.js';
+// import { CONFIG } from '../data/config_v2.js';
 
 export const CONSTANTS = {
     GRAVITY: 800, // Pixels per second squared

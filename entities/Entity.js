@@ -15,7 +15,7 @@ export class Entity {
         this.sprite = null;
     }
 
-    update(dt, physics) {
+    update(_dt, _physics) {
         // Override me
     }
 }

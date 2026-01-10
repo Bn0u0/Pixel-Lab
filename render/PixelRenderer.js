@@ -55,8 +55,8 @@ export class PixelRenderer {
         this.camera.y = camY;
     }
 
-    renderPhysics(physicsWorld, time) {
-        const activeChunks = physicsWorld.activeChunks;
+    renderPhysics(physicsWorld, _time) {
+        // const activeChunks = physicsWorld.activeChunks;
 
         // Only render visible range
         const screenW = this.canvas.width / this.scale;
@@ -79,14 +79,27 @@ export class PixelRenderer {
     }
 
     render(entity, palette, time) {
-        if (!entity.sprite) return;
+        // Fallback for entities without sprite (e.g., Items)
+        if (!entity.sprite) {
+            if (entity.color && entity.width && entity.height) {
+                const dx = entity.x - this.camera.x;
+                const dy = entity.y - this.camera.y;
+
+                // Draw simple rect centered at x, and bottom at y
+                const rx = dx - entity.width / 2;
+                const ry = dy - entity.height;
+
+                this._drawPixelRect(rx, ry, entity.width, entity.height, entity.color);
+            }
+            return;
+        }
 
         const dx = entity.x - this.camera.x;
         const dy = entity.y - this.camera.y;
 
         // 1. Dynamic Injection (Bobbing / Breath)
         // Only if Idle
-        let yOffset = 0;
+        // const yOffset = 0;
         let stretchX = 1;
         let stretchY = 1;
 
@@ -132,7 +145,7 @@ export class PixelRenderer {
                 // Geometry Calculation
                 // Original relative pos from top-left (0,0) of sprite grid
                 let px = c;
-                let py = r;
+                const py = r;
 
                 // Flip if facing left
                 if (facing < 0) {
@@ -201,6 +214,19 @@ export class PixelRenderer {
             Math.floor(y * this.scale),
             Math.ceil(this.scale),
             Math.ceil(this.scale)
+        );
+    }
+
+    _drawPixelRect(x, y, w, h, color) {
+        if (typeof color === 'number') {
+            color = '#' + color.toString(16).padStart(6, '0');
+        }
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(
+            Math.floor(x * this.scale),
+            Math.floor(y * this.scale),
+            Math.ceil(w * this.scale),
+            Math.ceil(h * this.scale)
         );
     }
 }

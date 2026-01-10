@@ -28,7 +28,8 @@ export class MapManager {
                 resolve();
             };
             img.onerror = (e) => {
-                console.error(`Failed to load level: ${src}`, e);
+                // eslint-disable-next-line no-console
+                console.error(`Failed to redo load level: ${src}`, e);
                 reject(e);
             };
             img.src = src;
@@ -63,7 +64,7 @@ export class MapManager {
                 const b = data[idx + 2];
                 // const a = data[idx + 3];
 
-                const gridIndex = y * width + x;
+                // const gridIndex = y * width + x;
 
                 // Color Mapping
                 // 1. Yellow (255, 255, 0) -> SAND
@@ -91,6 +92,6 @@ export class MapManager {
             }
         }
 
-        console.log(`Level ${img.src} loaded. Size: ${width}x${height}`);
+        // console.log(`Level ${img.src} loaded. Size: ${width}x${height}`);
     }
 }

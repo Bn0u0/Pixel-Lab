@@ -38,8 +38,10 @@ export class MainMenu {
                 if (this.onStartGame) this.onStartGame();
             });
         });
-        const loadBtn = this._createMenuButton('繼續旅程', () => { console.log('Load not impl'); });
-        const cfgBtn = this._createMenuButton('系統設定', () => { console.log('Settings not impl'); });
+        const loadBtn = this._createMenuButton('繼續旅程', () => { // console.log('Load not impl'); 
+        });
+        const cfgBtn = this._createMenuButton('系統設定', () => { // console.log('Settings not impl'); 
+        });
 
         menuActions.appendChild(startBtn);
         menuActions.appendChild(loadBtn);

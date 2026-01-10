@@ -1,0 +1,30 @@
+
+> pixel-lab@1.0.0 lint
+> eslint .
+
+
+D:\Vibe Coding專案庫\像素腳色\core\Constants.js
+  5:10  warning  'CONFIG' is defined but never used  no-unused-vars
+
+D:\Vibe Coding專案庫\像素腳色\entities\Entity.js
+  18:12  warning  'dt' is defined but never used. Allowed unused args must match /^_/u       no-unused-vars
+  18:16  warning  'physics' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+
+D:\Vibe Coding專案庫\像素腳色\entities\Player.js
+  78:15  warning  'footY' is assigned a value but never used  no-unused-vars
+  86:15  warning  'topY' is assigned a value but never used   no-unused-vars
+
+D:\Vibe Coding專案庫\像素腳色\render\PixelRenderer.js
+   58:33  warning  'time' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+   59:15  warning  'activeChunks' is assigned a value but never used                       no-unused-vars
+   89:13  error    'yOffset' is never reassigned. Use 'const' instead                      prefer-const
+   89:13  warning  'yOffset' is assigned a value but never used                            no-unused-vars
+  135:21  error    'py' is never reassigned. Use 'const' instead                           prefer-const
+
+D:\Vibe Coding專案庫\像素腳色\ui\MainMenu.js
+  41:64  warning  Unexpected console statement  no-console
+  42:63  warning  Unexpected console statement  no-console
+
+✖ 12 problems (2 errors, 10 warnings)
+  2 errors and 0 warnings potentially fixable with the `--fix` option.
+

@@ -17,6 +17,11 @@ export const PALETTE_SLIME = {
     // Eye
     'E': '#000000', // Eye Black
 
+    // Equipment
+    'I': '#BDC3C7', // Iron (Silver)
+    'H': '#8B4513', // Handle (Brown)
+    'G': '#FFD700', // Gold (Shield Trim)
+
     // Debug
     'X': '#FF00FF'  // Missing / Error
 };

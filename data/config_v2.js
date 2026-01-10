@@ -12,7 +12,7 @@ export const CONFIG = {
     // 邏輯解析度 (Grid Standard)
     // 1024 width covers the requesting -500 to +500 range (from center)
     GRID_WIDTH: 1024,
-    GRID_HEIGHT: 144,
+    GRID_HEIGHT: 360,
 
     // Target FPS
     // 目標幀率

@@ -7,7 +7,8 @@ import { MapManager } from './core/MapManager.js';
 import { Player } from './entities/Player.js';
 import { SPRITE_SLIME_BASE } from './data/library/bodies/slime_base.js';
 import { PALETTE_SLIME } from './data/palettes.js';
-import { WardrobeUI } from './ui/WardrobeUI.js';
+// import { WardrobeUI } from './ui/WardrobeUI.js';
+// import { MainMenu } from './ui/MainMenu.js';
 
 // --- System Initialization ---
 const renderer = new PixelRenderer('game-world');
@@ -60,13 +61,16 @@ async function startGame() {
         console.log('👕 Equipping Gear...');
         player.equip('body', SPRITE_SLIME_BASE);
 
-        // 4. Init UI
-        new WardrobeUI(player);
+        // 4. Init In-Game UI
+        // new WardrobeUI(player);
 
-        // 5. Start Loop
+        // 5. Show Main Menu & Wait for User
+        console.log('📺 Auto-Starting Engine (UI Skipped)...');
+        // new MainMenu('game-container', () => {
         console.log('✅ Starting Rules Engine...');
         gameLoop = new GameLoop(update, draw, CONFIG.FPS);
         gameLoop.start();
+        // });
 
     } catch (e) {
         console.error('❌ Critical Failure:', e);

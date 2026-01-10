@@ -1,57 +1,53 @@
+/**
+ * Game Loop
+ * 遊戲主迴圈
+ * Implements Fixed Time Step pattern for consistent physics.
+ */
 export class GameLoop {
-    constructor(updateCallback, drawCallback, fps = 60) {
-        this.updateCallback = updateCallback;
-        this.drawCallback = drawCallback;
-        this.fps = fps;
-        this.step = 1 / fps; // Fixed time step (seconds)
+    constructor(updateFn, drawFn, targetFPS = 60) {
+        this.updateFn = updateFn;
+        this.drawFn = drawFn;
+        this.fps = targetFPS;
+        this.timestep = 1 / this.fps;
+
+        this.isRunning = false;
         this.lastTime = 0;
         this.accumulator = 0;
-        this.rafId = null;
-        this.isRunning = false;
+
+        this._loop = this._loop.bind(this);
     }
 
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
-        this.lastTime = performance.now();
+        this.lastTime = performance.now() / 1000; // Seconds
         this.accumulator = 0;
-        this.rafId = requestAnimationFrame((timestamp) => this.loop(timestamp));
-        // console.log('GameLoop Started');
+        requestAnimationFrame(this._loop);
     }
 
     stop() {
         this.isRunning = false;
-        if (this.rafId) {
-            cancelAnimationFrame(this.rafId);
-        }
-        // console.log('GameLoop Stopped');
     }
 
-    loop(timestamp) {
+    _loop(currentTime) {
         if (!this.isRunning) return;
 
-        // Calculate delta time in seconds
-        // 計算經過的時間 (秒)
-        let deltaTime = (timestamp - this.lastTime) / 1000;
-        this.lastTime = timestamp;
+        // Convert to seconds
+        const time = currentTime / 1000;
+        const frameTime = Math.min(time - this.lastTime, 0.25); // Cap at 0.25s to prevent spiral of death
+        this.lastTime = time;
 
-        // Prevent spiral of death if lag occurs (cap dt at 0.1s)
-        // 防止過大延遲導致的死循環
-        if (deltaTime > 0.1) deltaTime = 0.1;
+        this.accumulator += frameTime;
 
-        this.accumulator += deltaTime;
-
-        // Fixed Update Step
-        // 固定時間步長更新
-        while (this.accumulator >= this.step) {
-            this.updateCallback(this.step);
-            this.accumulator -= this.step;
+        // Update Physics (Fixed Steps)
+        while (this.accumulator >= this.timestep) {
+            this.updateFn(this.timestep);
+            this.accumulator -= this.timestep;
         }
 
-        // Render
-        // 渲染
-        this.drawCallback();
+        // Render (Interpolation could be added here later using accumulator/timestep alpha)
+        this.drawFn();
 
-        this.rafId = requestAnimationFrame((t) => this.loop(t));
+        requestAnimationFrame(this._loop);
     }
 }

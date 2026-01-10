@@ -83,6 +83,10 @@ export class MapManager {
                     }
                     physics.set(x, y, MATERIALS.AIR); // Clear spawn point
                 }
+                // 4. Dodger Blue (30, 144, 255) -> WATER
+                else if (r === 30 && g === 144 && b === 255) {
+                    physics.set(x, y, MATERIALS.WATER);
+                }
                 // Default: AIR
             }
         }

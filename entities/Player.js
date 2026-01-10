@@ -1,294 +1,130 @@
-import { Entity } from '../core/Entity.js';
-
-export const STATE = {
-    IDLE: 'IDLE',
-    MOVE: 'MOVE',
-    JUMP: 'JUMP',
-    FALL: 'FALL',
-    DASH: 'DASH',
-    DEVOUR: 'DEVOUR'
-};
-
 /**
- * Player Class
- * 玩家類別
+ * Player (Slime)
+ * 主角邏輯
  */
+import { Entity } from './Entity.js';
+import { CONSTANTS } from '../core/Constants.js';
+import { MATERIALS } from '../core/PhysicsWorld.js';
+
 export class Player extends Entity {
-    constructor(x, y, inputHandler) {
-        super(x, y); // x: Center, y: Feet (Bottom)
-        this.input = inputHandler;
+    constructor(x, y, input) {
+        super(x, y);
+        this.input = input;
 
-        // Physics Properties
-        this.velocity = { x: 0, y: 0 };
-        this.isGrounded = false;
-        this.facing = 1; // 1: Right, -1: Left
+        // Physics Params
+        this.jumpTimer = 0;
+        this.squashState = null; // { x: 1, y: 1 } for animation
+    }
 
-        // Visual Properties (Squash & Stretch)
-        this.scale = { x: 1, y: 1 };
-
-        // State Machine
-        this.state = STATE.FALL;
-        this.stateTimer = 0; // For tracking state duration (Dash/Devour)
-
-        // Jump Mechanics
-        this.jumpCount = 0;
-        this.wasJumpDown = false; // Input debouncing
-
-        // Constants
-        this.CONST = {
-            SPEED: 80,         // Max Run Speed
-            ACCEL: 600,        // Horizontal Acceleration
-            FRICTION: 12,      // Ground Friction
-            AIR_RESISTANCE: 2, // Air Friction
-            GRAVITY: 900,      // Gravity Force
-            JUMP_FORCE: -350,  // Jump Impulse
-            MAX_JUMPS: 2,      // Double Jump
-            MAX_FALL: 600,     // Terminal Velocity
-            DASH_SPEED: 250,   // Dash Speed
-            DASH_TIME: 0.15,   // Dash Duration (seconds)
-            DEVOUR_TIME: 0.4,  // Devour Duration (seconds)
-            HEIGHT: 15         // Hitbox Height
-        };
+    equip(slot, spriteData) {
+        // Simple slot system for now
+        this.sprite = spriteData;
     }
 
     update(dt, physics) {
-        const { SPEED, ACCEL, FRICTION, AIR_RESISTANCE, GRAVITY, JUMP_FORCE, MAX_FALL, DASH_SPEED, HEIGHT } = this.CONST;
+        // 1. Input Processing
+        this._handleInput();
 
-        // --- Visuals: Smooth Scale (Lerp back to 1) ---
-        // Lerp speed: 10.0 for snappy return
-        const lerpSpeed = 10.0 * dt;
-        this.scale.x += (1 - this.scale.x) * lerpSpeed;
-        this.scale.y += (1 - this.scale.y) * lerpSpeed;
+        // 2. Physics Integration
+        this._applyPhysics(dt);
 
-        // --- Input State Handling (Debounce) ---
-        const jumpKeyDown = this.input.isKeyDown('KeyW') || this.input.isKeyDown('Space') || this.input.isKeyDown('ArrowUp');
-        const jumpJustPressed = jumpKeyDown && !this.wasJumpDown;
-        this.wasJumpDown = jumpKeyDown;
+        // 3. Collision Detection & Resolution
+        this._handleCollisions(physics);
 
-        // --- 1. State Machine Logic ---
-        switch (this.state) {
-            case STATE.IDLE:
-                this.handleMovement(dt, ACCEL, FRICTION);
-                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break;
-                if (this.tryDash()) break;
-                if (this.tryDevour()) break;
-
-                // Transition
-                if (Math.abs(this.velocity.x) > 10) this.setState(STATE.MOVE);
-                if (!this.isGrounded) this.setState(STATE.FALL);
-                break;
-
-            case STATE.MOVE:
-                this.handleMovement(dt, ACCEL, FRICTION);
-                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break;
-                if (this.tryDash()) break;
-                if (this.tryDevour()) break;
-
-                // Transition
-                if (Math.abs(this.velocity.x) <= 10) this.setState(STATE.IDLE);
-                if (!this.isGrounded) this.setState(STATE.FALL);
-                break;
-
-            case STATE.JUMP:
-            case STATE.FALL:
-                this.handleMovement(dt, ACCEL, AIR_RESISTANCE); // Air control? Yes
-                if (jumpJustPressed && this.tryJump(JUMP_FORCE)) break; // Air Jump
-                if (this.tryDash()) break;
-                // Note: No Devour in Air
-
-                // Gravity
-                this.velocity.y += GRAVITY * dt;
-
-                // Transition
-                if (this.velocity.y > 0) this.state = STATE.FALL; // Just update label
-                if (this.isGrounded) this.setState(STATE.IDLE);
-                break;
-
-            case STATE.DASH:
-                this.stateTimer -= dt;
-                this.velocity.x = this.facing * DASH_SPEED;
-                this.velocity.y = 0; // Defy gravity
-
-                if (this.stateTimer <= 0) {
-                    this.velocity.x = 0; // Stop after dash? or carry momentum? Let's stop to be snappy.
-                    this.setState(this.isGrounded ? STATE.IDLE : STATE.FALL);
-                }
-                break;
-
-            case STATE.DEVOUR:
-                this.stateTimer -= dt;
-                this.velocity.x *= 0.9; // Rapid slowdown
-                // Gravity applies? Yes, in case platform breaks
-                this.velocity.y += GRAVITY * dt;
-
-                if (this.stateTimer <= 0) {
-                    this.setState(STATE.IDLE);
-                }
-                break;
-        }
-
-        // Clamp & Terminal Velocity
-        if (this.state !== STATE.DASH) {
-            if (this.velocity.x > SPEED) this.velocity.x = SPEED;
-            if (this.velocity.x < -SPEED) this.velocity.x = -SPEED;
-            if (this.velocity.y > MAX_FALL) this.velocity.y = MAX_FALL;
-        }
-
-        // --- 2. Physics Integration ---
-        this.applyPhysics(dt, physics, HEIGHT);
+        // 4. Animation Logic (Squash recovery)
+        this._updateAnimation(dt);
     }
 
-    // --- Actions ---
-
-    handleMovement(dt, accel, damping) {
-        let dirX = 0;
-        if (this.input.isKeyDown('KeyA') || this.input.isKeyDown('ArrowLeft')) dirX -= 1;
-        if (this.input.isKeyDown('KeyD') || this.input.isKeyDown('ArrowRight')) dirX += 1;
-
-        if (dirX !== 0) {
-            this.facing = dirX;
-            this.velocity.x += dirX * accel * dt;
-        } else {
-            this.velocity.x -= this.velocity.x * damping * dt;
-            if (Math.abs(this.velocity.x) < 5) this.velocity.x = 0;
+    _handleInput() {
+        // X Movement
+        if (this.input.state.x !== 0) {
+            this.velocity.x += this.input.state.x * CONSTANTS.MOVE_SPEED * 0.2; // Accel
+            this.facing = this.input.state.x;
         }
-    }
 
-    tryJump(jumpForce) {
-        // Ground Jump or Air Jump
-        if (this.isGrounded) {
-            this.triggerSquash(0.7, 1.3); // Stretch Up
-            this.velocity.y = jumpForce;
+        // Jump
+        if (this.input.state.jump && this.isGrounded) {
+            this.velocity.y = CONSTANTS.JUMP_FORCE;
             this.isGrounded = false;
-            this.jumpCount = 1;
-            this.setState(STATE.JUMP);
-            return true;
-        } else if (this.jumpCount < this.CONST.MAX_JUMPS) {
-            this.triggerSquash(0.6, 1.4); // Air Jump Stretch (More exaggerated)
-            this.velocity.y = jumpForce; // Full Reset of vertical velocity
-            this.jumpCount++;
-            this.setState(STATE.JUMP);
-            return true;
+            // Squash Effect (Stretch up)
+            this.squashState = { x: 0.8, y: 1.3 };
         }
-        return false;
     }
 
-    tryDash() {
-        // Press 'Shift' or 'Z' to Dash
-        if (this.input.isKeyDown('KeyZ') || this.input.isKeyDown('ShiftLeft')) {
-            this.triggerSquash(1.4, 0.6); // Flat Stretch
-            this.setState(STATE.DASH);
-            return true;
-        }
-        return false;
+    _applyPhysics(dt) {
+        // Gravity
+        this.velocity.y += CONSTANTS.GRAVITY * dt;
+
+        // Friction (Air resistance too?)
+        this.velocity.x *= CONSTANTS.FRICTION;
+
+        // Clamp Speed
+        if (Math.abs(this.velocity.x) < 1) this.velocity.x = 0;
+
+        // Apply Velocity
+        this.x += this.velocity.x * dt;
+        this.y += this.velocity.y * dt;
+
+        // World Bounds (Temporary)
+        // Hard floor at bottom if physics collision fails?
+        // Handled by collision.
     }
 
-    tryDevour() {
-        // Press 'X' or 'E' to Devour
-        if (this.input.isKeyDown('KeyX') || this.input.isKeyDown('KeyE')) {
-            this.setState(STATE.DEVOUR);
-            return true;
-        }
-        return false;
-    }
+    _handleCollisions(physics) {
+        // Simple AABB vs Grid
+        // Check Bottom (Ground)
 
-    triggerSquash(x, y) {
-        this.scale.x = x;
-        this.scale.y = y;
-    }
+        // We check a few points at the feet
+        const footY = Math.floor(this.y + 1); // 1px below center? No, Y is feet? 
+        // Note: Entity Y in this engine usually means "Position".
+        // Renderer draws sprite relative to it.
+        // Let's assume (x,y) is Bottom-Center of Hitbox.
 
-    setState(newState) {
-        if (this.state === newState) return;
+        const leftX = Math.floor(this.x - this.width / 2);
+        const rightX = Math.floor(this.x + this.width / 2);
+        const bottomY = Math.floor(this.y);
+        const topY = Math.floor(this.y - this.height);
 
-        // Exit Logic
-        // ...
+        // Ground Check
+        const matLeft = physics.get(leftX, bottomY);
+        const matRight = physics.get(rightX, bottomY);
+        const matCenter = physics.get(Math.floor(this.x), bottomY);
 
-        this.state = newState;
-
-        // Enter Logic
-        switch (newState) {
-            case STATE.DASH:
-                this.stateTimer = this.CONST.DASH_TIME;
-                break;
-            case STATE.DEVOUR:
-                this.stateTimer = this.CONST.DEVOUR_TIME;
-                // console.log('Nom nom nom...'); // Debug for Devour
-                break;
-        }
-        // console.log(`State: ${newState}`);
-    }
-
-    applyPhysics(dt, physics, height) {
-        // --- X Axis ---
-        let nextX = this.x + this.velocity.x * dt;
-
-        // World Boundary
-        if (nextX < 2) nextX = 2;
-        if (nextX > physics.width - 2) nextX = physics.width - 2;
-
-        // Collision X
-        const wallCheckY = this.y - 4;
-        if (this.checkCollision(nextX + (this.velocity.x > 0 ? 5 : -5), wallCheckY, physics)) {
-            this.velocity.x = 0;
-        } else {
-            this.x = nextX;
-        }
-
-        // --- Y Axis ---
-        let finalY = this.y;
-        let remainingDy = this.velocity.y * dt;
-        const stepY = 1;
-        const signY = Math.sign(remainingDy);
-
-        while (Math.abs(remainingDy) > 0) {
-            const step = Math.min(Math.abs(remainingDy), stepY) * signY;
-            const tryY = finalY + step;
-
+        // If any foot pixel touches Solid
+        if (this._isSolid(matLeft) || this._isSolid(matRight) || this._isSolid(matCenter)) {
             if (this.velocity.y > 0) {
-                // Falling
-                if (this.checkCollision(this.x, tryY, physics)) {
-                    // Landed Logic
-                    if (!this.isGrounded) {
-                        // Impact Squash based on speed
-                        // Small fall -> small squash. Big fall -> big squash.
-                        // Max squash limited to 1.5, 0.5
-                        const impact = Math.min(Math.abs(this.velocity.y) / 600, 0.5);
-                        if (impact > 0.1) this.triggerSquash(1 + impact, 1 - impact);
-                    }
+                // Landed
+                this.y = bottomY; // Snap? 
+                this.velocity.y = 0;
+                this.isGrounded = true;
 
-                    finalY = Math.floor(tryY);
-                    this.velocity.y = 0;
-                    this.isGrounded = true;
-                    this.jumpCount = 0; // Reset Jump Count
-                    remainingDy = 0;
-                    break;
-                } else {
-                    finalY = tryY;
-                    this.isGrounded = false; // Falling
-                    remainingDy -= step;
-                }
-            } else {
-                // Jumping
-                if (this.checkCollision(this.x, tryY - height, physics)) {
-                    this.velocity.y = 0; // Head bonk
-                    remainingDy = 0;
-                    break;
-                } else {
-                    finalY = tryY;
-                    remainingDy -= step;
+                // Landing Squash (Flatten)
+                if (!this.wasGroundedLastFrame) {
+                    this.squashState = { x: 1.3, y: 0.7 };
                 }
             }
-            if (Math.abs(remainingDy) < 0.001) break;
+        } else {
+            this.isGrounded = false;
         }
-        this.y = finalY;
+
+        this.wasGroundedLastFrame = this.isGrounded;
+
+        // Wall Check (Left/Right) - ToDo
     }
 
-    checkCollision(x, y, physics) {
-        if (!physics) return false;
-        const gx = Math.floor(x);
-        const gy = Math.floor(y);
-        const mat = physics.get(gx, gy);
-        const props = physics.constructor.getProperties(mat);
-        return props.type === 'solid';
+    _isSolid(matId) {
+        return matId === MATERIALS.STONE || matId === MATERIALS.WOOD || matId === MATERIALS.SAND;
+    }
+
+    _updateAnimation(dt) {
+        // Recover Squash
+        if (this.squashState) {
+            // Lerp back to 1,1
+            const speed = 10 * dt;
+            this.squashState.x += (1 - this.squashState.x) * speed;
+            this.squashState.y += (1 - this.squashState.y) * speed;
+
+            if (Math.abs(this.squashState.x - 1) < 0.01) this.squashState = null;
+        }
     }
 }

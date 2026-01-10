@@ -148,11 +148,9 @@ export class PhysicsWorld {
                         const cell = this.grid[i];
 
                         if (cell === MATERIALS.SAND) {
-                            const moved = this.updateSand(x, y, i);
-                            if (moved) {
-                                chunkHasActivity = true;
-                                // updateSand handles waking destination chunk (and neighbors if needed)
-                            }
+                            if (this.updateSand(x, y, i)) chunkHasActivity = true;
+                        } else if (cell === MATERIALS.WATER) {
+                            if (this.updateWater(x, y, i)) chunkHasActivity = true;
                         }
                     }
                 }
@@ -178,53 +176,83 @@ export class PhysicsWorld {
     updateSand(x, y, i) {
         const ty = y + 1;
 
-        // 1. Bottom Boundary (Stop at bottom of world)
-        if (ty >= this.height) {
-            return false;
-        }
+        // 1. Bottom Boundary
+        if (ty >= this.height) return false;
 
         const below = i + this.width;
         let target = -1;
         let tx = x;
 
-        // 2. Try passing down (Gravity)
+        // 2. Try falling down
         if (this.grid[below] === MATERIALS.AIR || this.grid[below] === MATERIALS.WATER) {
             target = below;
         }
-        // 3. Try falling diagonal left
-        else {
-            // Check Left Boundary (Must exist)
-            if (x > 0) {
-                const belowLeft = below - 1;
-                if (this.grid[belowLeft] === MATERIALS.AIR || this.grid[belowLeft] === MATERIALS.WATER) {
-                    target = belowLeft;
-                    tx = x - 1;
-                }
+        // 3. Try diagonal left
+        else if (x > 0 && (this.grid[below - 1] === MATERIALS.AIR || this.grid[below - 1] === MATERIALS.WATER)) {
+            target = below - 1;
+            tx = x - 1;
+        }
+        // 4. Try diagonal right
+        else if (x < this.width - 1 && (this.grid[below + 1] === MATERIALS.AIR || this.grid[below + 1] === MATERIALS.WATER)) {
+            target = below + 1;
+            tx = x + 1;
+        }
+
+        if (target !== -1) {
+            // Swap (Swap logic handles Sand sinking in Water)
+            const displaced = this.grid[target];
+            this.grid[target] = MATERIALS.SAND;
+            this.grid[i] = displaced; // Put displaced material (e.g. Water) up
+
+            this.wakeChunkAt(tx, ty);
+            this.wakeChunkAt(x, y); // Wake source too for water re-settling
+            return true;
+        }
+        return false;
+    }
+
+    updateWater(x, y, i) {
+        const ty = y + 1;
+        let target = -1;
+        let tx = x;
+
+        // 1. Try falling down (Gravity)
+        if (ty < this.height) {
+            const below = i + this.width;
+            if (this.grid[below] === MATERIALS.AIR) {
+                target = below; // Fall down
             }
         }
 
-        // 4. Try falling diagonal right
+        // 2. Flow Left/Right if falling not possible
         if (target === -1) {
-            // Check Right Boundary (Must exist)
-            if (x < this.width - 1) {
-                const belowRight = below + 1;
-                if (this.grid[belowRight] === MATERIALS.AIR || this.grid[belowRight] === MATERIALS.WATER) {
-                    target = belowRight;
-                    tx = x + 1;
-                }
+            // Randomly choose direction to prevent bias, or check both
+            // Simple approach: Check neighbors
+            const canLeft = x > 0 && this.grid[i - 1] === MATERIALS.AIR;
+            const canRight = x < this.width - 1 && this.grid[i + 1] === MATERIALS.AIR;
+
+            if (canLeft && canRight) {
+                // Randomize flow
+                if (Math.random() < 0.5) { target = i - 1; tx = x - 1; }
+                else { target = i + 1; tx = x + 1; }
+            } else if (canLeft) {
+                target = i - 1; tx = x - 1;
+            } else if (canRight) {
+                target = i + 1; tx = x + 1;
             }
         }
 
         if (target !== -1) {
-            // Swap
-            this.grid[i] = this.grid[target];
-            this.grid[target] = MATERIALS.SAND;
+            // Move Water
+            this.grid[target] = MATERIALS.WATER;
+            this.grid[i] = MATERIALS.AIR;
 
-            // Wake up destination info
-            this.wakeChunkAt(tx, ty); // Wake destination
+            this.wakeChunkAt(tx, (target === i - 1 || target === i + 1) ? y : ty);
+            this.wakeChunkAt(x, y);
             return true;
         }
 
         return false;
     }
 }
+
